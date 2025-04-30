@@ -1,0 +1,50 @@
+{
+  "name": "venice-telegram-bot",
+  "version": "1.0.0",
+  "description": "Venice Telegram bot",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc && resolve-tspaths",
+    "start": "node build/index.js",
+    "start:dev": "ts-node -r tsconfig-paths/register src/index.ts | pino-pretty"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "venice",
+    "ai"
+  ],
+  "author": "Demian Rodriguez",
+  "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.1",
+    "@types/lodash": "^4.14.199",
+    "@types/luxon": "^3.3.2",
+    "eslint": "^9.25.1",
+    "eslint-config-prettier": "^10.1.2",
+    "pino-pretty": "^10.2.3",
+    "prettier": "^3.5.3",
+    "resolve-tspaths": "^0.8.16",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.31.1"
+  },
+  "dependencies": {
+    "@telegraf/session": "^2.0.0-beta.7",
+    "dotenv": "^16.3.1",
+    "gpt-tokenizer": "^2.9.0",
+    "kysely": "^0.27.2",
+    "lodash": "^4.17.21",
+    "luxon": "^3.4.3",
+    "openai": "^4.96.2",
+    "pg": "^8.11.3",
+    "pg-promise": "^11.5.4",
+    "pino": "^8.15.7",
+    "telegraf": "^4.14.0"
+  }
+}

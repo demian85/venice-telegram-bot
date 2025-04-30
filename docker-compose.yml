@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    ports:
+      - '5432:5432'
+    volumes:
+      - venice-bot-db:/var/lib/postgresql/data
+    restart: always
+
+  venice-bot:
+    build:
+      context: .
+    env_file:
+      - .env
+    restart: always
+    logging:
+      driver: local
+      options:
+        max-size: '10m'
+    depends_on:
+      - postgres
+    # ports:
+    #   - '3000:3000'
+    # develop:
+    #   watch:
+    #     - action: sync
+    #       path: build
+
+volumes:
+  venice-bot-db:
