@@ -109,7 +109,7 @@ bot.on(message('text'), async (ctx) => {
       ? {}
       : { reply_parameters: { message_id: ctx.message.message_id } }
 
-  await ctx.replyWithMarkdownV2(completion, params)
+  await ctx.reply(completion, params)
 })
 
 bot.on(message('photo'), async (ctx) => {
@@ -147,7 +147,7 @@ bot.on(message('photo'), async (ctx) => {
       ? {}
       : { reply_parameters: { message_id: ctx.message.message_id } }
 
-  await ctx.replyWithMarkdownV2(completion, params)
+  await ctx.reply(completion, params)
 })
 
 bot.on('callback_query', async (ctx) => {
