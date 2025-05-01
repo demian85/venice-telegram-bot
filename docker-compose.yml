@@ -24,10 +24,10 @@ services:
       - postgres
     # ports:
     #   - '3000:3000'
-    # develop:
-    #   watch:
-    #     - action: sync
-    #       path: build
+    develop:
+      watch:
+        - action: rebuild
+          path: src
 
 volumes:
   venice-bot-db:
