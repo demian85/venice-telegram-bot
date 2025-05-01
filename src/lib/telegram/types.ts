@@ -8,7 +8,7 @@ import {
 
 export type MessageContext = NarrowedContext<
   ContextWithSession<Update>,
-  Update.MessageUpdate<Record<'text', {}> & Message.TextMessage>
+  Update.MessageUpdate<Record<'text', unknown> & Message.TextMessage>
 >
 
 export type CallbackQueryContext = NarrowedContext<
@@ -33,6 +33,7 @@ export interface ContextWithSession<U extends Update = Update>
     currentCommand: CurrentCommand | null
     config: {
       model: string
+      maxTokens: number
     }
     messages: ChatCompletionMessageParam[]
   }

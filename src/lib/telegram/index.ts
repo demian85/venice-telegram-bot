@@ -42,7 +42,7 @@ bot.use((ctx, _next) => {
 
   ctx.session ??= {
     currentCommand: null,
-    config: { model: DEFAULT_MODEL },
+    config: { model: DEFAULT_MODEL, maxTokens: 256000 },
     messages: [],
   }
 
@@ -62,7 +62,7 @@ bot.use((ctx, _next) => {
 
 bot.start((ctx) => ctx.reply(`Ask me anything!`))
 
-bot.help((ctx) => ctx.reply('What do you need?'))
+bot.help((ctx) => ctx.reply(`Available commands: /help, /config, /new`))
 
 bot.command('abort', async (ctx) => {
   ctx.session.currentCommand = null
@@ -115,6 +115,43 @@ bot.on(message('text'), async (ctx) => {
 bot.on(message('photo'), async (ctx) => {
   const photo = ctx.message.photo
   const fileId = photo[photo.length - 1].file_id
+  const fileLink = await ctx.telegram.getFileLink(fileId)
+  const caption = ctx.message.caption
+
+  if (ctx.session.currentCommand) {
+    return ctx.reply(`/help`)
+  }
+
+  const content: ChatCompletionContentPart[] = caption
+    ? [
+        {
+          type: 'text',
+          text: caption,
+        },
+      ]
+    : []
+  content.push({ type: 'image_url', image_url: { url: fileLink.toString() } })
+  pushAndTruncateSessionMessages(ctx, {
+    role: 'user',
+    content,
+  })
+
+  const completion = await handleTextCompletion(ctx)
+
+  if (!completion) {
+    return ctx.reply('Error: No response from Venice')
+  }
+
+  const params =
+    ctx.chat.type === 'private'
+      ? {}
+      : { reply_parameters: { message_id: ctx.message.message_id } }
+
+  await ctx.reply(completion, params)
+})
+
+bot.on(message('document'), async (ctx) => {
+  const fileId = ctx.message.document.file_id
   const fileLink = await ctx.telegram.getFileLink(fileId)
   const caption = ctx.message.caption
 
@@ -203,7 +240,7 @@ function pushAndTruncateSessionMessages(
   ctx.session.messages.push(msgPart)
 
   const output: ChatCompletionMessageParam[] = []
-  const reversedHistory = ctx.session.messages.reverse()
+  const reversedHistory = [...ctx.session.messages].reverse()
   let tokenCount = 0
 
   for (const message of reversedHistory) {
@@ -218,7 +255,7 @@ function pushAndTruncateSessionMessages(
         .join(' ')
     }
     tokenCount += countTokens(contentString)
-    if (tokenCount <= 64000) {
+    if (tokenCount <= ctx.session.config.maxTokens) {
       output.push(message)
     }
   }
