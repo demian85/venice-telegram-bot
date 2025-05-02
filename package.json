@@ -6,7 +6,7 @@
   "scripts": {
     "test": "jest",
     "build": "tsc && resolve-tspaths",
-    "start": "node build/index.js",
+    "start": "node build/index.js | pino-pretty",
     "start:dev": "ts-node -r tsconfig-paths/register src/index.ts | pino-pretty"
   },
   "keywords": [

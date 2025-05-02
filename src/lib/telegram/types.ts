@@ -1,3 +1,4 @@
+import { ModelData, ModelList } from '@lib/types'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { Context, NarrowedContext } from 'telegraf'
 import {
@@ -25,18 +26,18 @@ export interface CurrentCommand {
 
 export interface Session {
   currentCommand: CurrentCommand | null
+  config: {
+    textModel: ModelData
+    imageModel: ModelData
+    codingModel: ModelData
+  }
+  messages: ChatCompletionMessageParam[]
+  availableModels: ModelData[]
 }
 
 export interface ContextWithSession<U extends Update = Update>
   extends Context<U> {
-  session: {
-    currentCommand: CurrentCommand | null
-    config: {
-      model: string
-      maxTokens: number
-    }
-    messages: ChatCompletionMessageParam[]
-  }
+  session: Session
 }
 
 export interface Handler {

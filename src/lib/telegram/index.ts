@@ -11,9 +11,7 @@ import {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
 import { countTokens } from 'gpt-tokenizer'
-
-const BOT_USERNAME = '@rambogpt_bot'
-const DEFAULT_MODEL = 'llama-4-maverick-17b'
+import { defaultSession } from './util'
 
 const bot = new Telegraf<ContextWithSession>(process.env.TELEGRAM_BOT_TOKEN!)
 
@@ -40,19 +38,17 @@ bot.use((ctx, _next) => {
     'Middleware call'
   )
 
-  ctx.session ??= {
-    currentCommand: null,
-    config: { model: DEFAULT_MODEL, maxTokens: 256000 },
-    messages: [],
-  }
+  ctx.session ??= defaultSession
 
   if (ctx.chat?.type !== 'private') {
     throw new Error('Bot not allowed in groups')
   }
 
+  const whitelistedUsers = process.env.TELEGRAM_USER_WHITELIST?.split(',')
+
   if (
-    !ctx.chat.username ||
-    !['demian85', 'SilvanaFontana'].includes(ctx.chat.username)
+    !ctx.chat?.username ||
+    (whitelistedUsers && !whitelistedUsers.includes(ctx.chat?.username))
   ) {
     throw new Error('Forbidden')
   }
@@ -219,12 +215,12 @@ async function handleTextCompletion(
   await ctx.sendChatAction('typing')
 
   const completion = await chatCompletion({
-    model: ctx.session.config.model,
+    model: ctx.session.config.textModel.id,
     messages: ctx.session.messages,
   })
 
   if (!completion) {
-    await ctx.reply('Error: No response from Venice')
+    await ctx.reply('Error: No response from model')
     return null
   }
 
@@ -233,6 +229,7 @@ async function handleTextCompletion(
   return completion
 }
 
+// TODO truncate history only when sending completion because models have different context limits
 function pushAndTruncateSessionMessages(
   ctx: ContextWithSession,
   msgPart: ChatCompletionMessageParam
@@ -255,7 +252,11 @@ function pushAndTruncateSessionMessages(
         .join(' ')
     }
     tokenCount += countTokens(contentString)
-    if (tokenCount <= ctx.session.config.maxTokens) {
+    if (
+      tokenCount <=
+      (ctx.session.config.textModel.model_spec?.availableContextTokens ??
+        256000)
+    ) {
       output.push(message)
     }
   }

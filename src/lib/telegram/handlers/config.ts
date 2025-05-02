@@ -1,6 +1,28 @@
 import { CallbackQuery } from 'telegraf/typings/core/types/typegram'
 import { CallbackQueryContext, MessageContext } from '../types'
 import { callbackError, cancelCommand } from './util'
+import { listModels } from '@lib/venice'
+import { ModelData } from '@lib/types'
+
+const modelNameMappings: Record<string, string> = {
+  // text models
+  'llama-4-maverick-17b': 'Large 256K - Vision - Web search - Most Intelligent',
+  'mistral-31-24b': 'Medium 128K - Vision - Web search',
+  'llama-3.2-3b': 'Small 128K - Fastest - Web search',
+  'qwen-2.5-qwq-32b': 'Reasoning 32K - Web search',
+  'venice-uncensored': 'Uncensored 32K - Web search',
+
+  // image models
+  'venice-sd35': 'Venice SD35 - Most artistic',
+  'flux-dev': 'FLUX Standard - Highest quality',
+  'flux-dev-uncensored': 'FLUX Custom - Uncensored',
+  'lustify-sdxl': 'Lustify SDXL - Uncensored',
+  'pony-realism': 'Pony Realism - Uncensored',
+
+  // code models
+  'deepseek-coder-v2-lite': 'Deepseek Coder V2 Lite 128K',
+  'qwen-2.5-coder-32b': 'Qwen 2.5 Coder 32B',
+}
 
 export default {
   message: [
@@ -9,8 +31,16 @@ export default {
       ctx.session.currentCommand = { id: 'config', step: 0 }
       const keyboardButtons = [
         {
-          text: 'Model',
-          callback_data: 'model',
+          text: 'Text Model',
+          callback_data: 'text_model',
+        },
+        {
+          text: 'Image Model',
+          callback_data: 'image_model',
+        },
+        {
+          text: 'Coding Model',
+          callback_data: 'coding_model',
         },
       ]
       await ctx.reply(`Choose an option`, {
@@ -26,41 +56,92 @@ export default {
       ctx.session.currentCommand!.step = 1
       ctx.session.currentCommand!.subcommand = callbackValue
 
-      if (callbackValue === 'model') {
-        await ctx.editMessageReplyMarkup({
-          inline_keyboard: [
-            [
-              {
-                text: 'Venice Large 256K - Vision - Web search - Most intelligent',
-                callback_data: 'llama-4-maverick-17b',
-              },
-              {
-                text: 'Venice Medium 128K - Vision - Web search',
-                callback_data: 'mistral-31-24b',
-              },
-            ],
-          ],
-        })
-      }
+      try {
+        let availableModels
 
-      await ctx.answerCbQuery()
+        if (callbackValue === 'text_model') {
+          availableModels = await listModels('text')
+        } else if (callbackValue === 'image_model') {
+          availableModels = await listModels('image')
+        } else if (callbackValue === 'coding_model') {
+          availableModels = await listModels('code')
+        }
+
+        if (!availableModels) {
+          return callbackError(ctx, 'No available models')
+        }
+
+        ctx.session.availableModels = availableModels.data
+
+        await ctx.editMessageReplyMarkup({
+          inline_keyboard: buildModelKeyboardButtons(availableModels.data),
+        })
+        await ctx.answerCbQuery()
+      } catch (err) {
+        const error = err as Error
+        return callbackError(ctx, error.message)
+      }
     },
 
     // step = 1
     async (ctx: CallbackQueryContext) => {
       const callbackValue = (ctx.callbackQuery as CallbackQuery.DataQuery).data
+      const selectedModel = ctx.session.availableModels.find((model) => {
+        return model.id === callbackValue
+      })
+
+      if (!selectedModel) {
+        return callbackError(ctx, 'Invalid model selected')
+      }
+
+      const selectedModelName = modelNameMappings[selectedModel.id]
+      const emptyKeyboard = { inline_keyboard: [] }
 
       switch (ctx.session.currentCommand?.subcommand) {
-        case 'model':
-          ctx.session.config.model = callbackValue
+        case 'text_model': {
+          ctx.session.config.textModel = selectedModel
           await ctx.answerCbQuery('')
-          await ctx.editMessageText(`Your new model is ${callbackValue}`, {
-            reply_markup: { inline_keyboard: [] },
-          })
+          await ctx.editMessageText(
+            `Your new text model is *${selectedModelName}*`,
+            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
+          )
           return cancelCommand(ctx)
+        }
+        case 'image_model': {
+          ctx.session.config.imageModel = selectedModel
+          await ctx.answerCbQuery('')
+          await ctx.editMessageText(
+            `Your new image model is *${selectedModelName}*`,
+            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
+          )
+          return cancelCommand(ctx)
+        }
+        case 'coding_model': {
+          ctx.session.config.codingModel = selectedModel
+          await ctx.answerCbQuery('')
+          await ctx.editMessageText(
+            `Your new coding model is *${selectedModelName}*`,
+            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
+          )
+          return cancelCommand(ctx)
+        }
         default:
           return callbackError(ctx)
       }
     },
   ],
+}
+
+function buildModelKeyboardButtons(availableModels: ModelData[]) {
+  return availableModels
+    .filter((model) => !!modelNameMappings[model.id])
+    .map((model) => {
+      const modelName = modelNameMappings[model.id]
+      return [
+        {
+          text: modelName,
+          callback_data: model.id,
+        },
+      ]
+    })
 }
