@@ -8,7 +8,7 @@ async function loadConfig(): Promise<Config> {
   const defaults = await import('./lib/telegram/defaults')
   try {
     const userConfig = await import('./bot.config')
-    return { ...defaults.defaultConfig, ...userConfig }
+    return { ...defaults.defaultConfig, ...userConfig.default }
   } catch (err) {
     return defaults.defaultConfig
   }

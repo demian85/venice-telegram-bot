@@ -55,11 +55,12 @@ export class Bot {
         throw new Error('Bot not allowed in groups')
       }
 
-      const whitelistedUsers = config.whitelistedUsers
+      const whitelistedUsers = this.config.whitelistedUsers
 
       if (
         !ctx.chat?.username ||
-        (whitelistedUsers && !whitelistedUsers.includes(ctx.chat?.username))
+        (whitelistedUsers.length > 0 &&
+          !whitelistedUsers.includes(ctx.chat?.username))
       ) {
         throw new Error('Forbidden')
       }
@@ -234,7 +235,7 @@ export class Bot {
 
   async init() {
     await this.bot.launch(() => {
-      logger.info('Telegram bot is up and running')
+      logger.info({ config: this.config }, 'Telegram bot is up and running')
     })
   }
 
