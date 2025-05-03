@@ -6,6 +6,13 @@ export interface OpenAIResponseError {
   }
 }
 
+export interface Config {
+  defaultMaxTokens: number
+  privateChatSystemPrompt: string
+  groupChatSystemPrompt: string
+  whitelistedUsers: string[]
+}
+
 interface ImageModelConstraints {
   promptCharacterLimit: number
   steps: {

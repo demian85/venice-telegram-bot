@@ -1,4 +1,4 @@
-import { ModelData, ModelList } from '@lib/types'
+import { ModelData } from '@lib/types'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { Context, NarrowedContext } from 'telegraf'
 import {

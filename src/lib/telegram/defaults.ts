@@ -1,4 +1,4 @@
-import { ModelData } from '@lib/types'
+import { Config, ModelData } from '@lib/types'
 import { Session } from './types'
 
 const defaultTextModel: ModelData = {
@@ -56,4 +56,13 @@ export const defaultSession: Session = {
   },
   messages: [],
   availableModels: [],
+}
+
+export const defaultConfig: Config = {
+  defaultMaxTokens: 256000,
+  privateChatSystemPrompt:
+    'You are a Telegram bot assistant. Keep responses short and concise when possible.',
+  groupChatSystemPrompt:
+    'You are an assistant in a Telegram group of friends. Give short and concise responses only when necessary. Every message is prepended with the name of the user.',
+  whitelistedUsers: [],
 }
