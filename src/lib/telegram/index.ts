@@ -95,9 +95,9 @@ export class Bot {
     })
 
     this.bot.on(message('text'), async (ctx) => {
-      const userMessage = ctx.message.text.trim()
+      const messageText = ctx.message.text.trim()
 
-      if (!userMessage) {
+      if (!messageText) {
         return ctx.reply(`/help`)
       }
 
@@ -112,17 +112,31 @@ export class Bot {
         return handlers?.[cmdId].message[cmd.step](ctx)
       }
 
-      const content =
-        ctx.chatType === 'private'
-          ? userMessage
-          : `${ctx.message.from.first_name ?? ctx.message.from.username}: ${userMessage}`
+      const userName = ctx.message.from.first_name ?? ctx.message.from.username
+      const isMention = ctx.message.entities?.find(
+        (v) =>
+          v.type === 'mention' &&
+          messageText.substring(0, v.length) ===
+            this.config.telegram.botUsername
+      )
+      const filteredMessageText = isMention
+        ? messageText.substring(this.config.telegram.botUsername.length).trim()
+        : messageText
 
       this.addAndTruncateChatHistory(ctx, {
         role: 'user',
-        content,
+        content:
+          ctx.chatType === 'private'
+            ? filteredMessageText
+            : `${userName}: ${filteredMessageText}`,
       })
 
-      await this.handleTextCompletion(ctx)
+      if (
+        (ctx.chatType === 'group' && isMention) ||
+        ctx.chatType === 'private'
+      ) {
+        await this.handleTextCompletion(ctx)
+      }
     })
 
     this.bot.on(message('photo'), async (ctx) => {
