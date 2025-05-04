@@ -38,6 +38,7 @@ export interface Session {
 export interface ContextWithSession<U extends Update = Update>
   extends Context<U> {
   session: Session
+  chatType: 'private' | 'group'
 }
 
 export interface Handler {

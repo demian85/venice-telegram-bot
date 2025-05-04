@@ -39,28 +39,34 @@ export class Bot {
     )
 
     this.bot.use((ctx, _next) => {
+      ctx.session ??= defaultSession
+      ctx.chatType = ctx.chat?.type === 'private' ? 'private' : 'group'
+
       logger.debug(
         {
           message: ctx.message,
           session: ctx.session,
           update: ctx.update,
           updateType: ctx.updateType,
+          chatType: ctx.chatType,
         },
         'Middleware call'
       )
 
-      ctx.session ??= defaultSession
-
-      if (ctx.chat?.type !== 'private') {
-        throw new Error('Bot not allowed in groups')
+      if (
+        !ctx.chat?.type ||
+        ['channel', 'supergroup'].includes(ctx.chat?.type)
+      ) {
+        throw new Error('Chat type not supported')
       }
 
       const whitelistedUsers = this.config.telegram.whitelistedUsers
 
       if (
-        !ctx.chat?.username ||
-        (whitelistedUsers.length > 0 &&
-          !whitelistedUsers.includes(ctx.chat?.username))
+        ctx.chat.type === 'private' &&
+        (!ctx.chat?.username ||
+          (whitelistedUsers.length > 0 &&
+            !whitelistedUsers.includes(ctx.chat?.username)))
       ) {
         throw new Error('Forbidden')
       }
@@ -89,7 +95,7 @@ export class Bot {
     })
 
     this.bot.on(message('text'), async (ctx) => {
-      const userMessage = ctx.message.text
+      const userMessage = ctx.message.text.trim()
 
       if (!userMessage) {
         return ctx.reply(`/help`)
@@ -106,23 +112,17 @@ export class Bot {
         return handlers?.[cmdId].message[cmd.step](ctx)
       }
 
+      const content =
+        ctx.chatType === 'private'
+          ? userMessage
+          : `${ctx.message.from.first_name ?? ctx.message.from.username}: ${userMessage}`
+
       this.addAndTruncateChatHistory(ctx, {
         role: 'user',
-        content: userMessage,
+        content,
       })
 
-      const completion = await this.handleTextCompletion(ctx)
-
-      if (!completion) {
-        return ctx.reply('Error: No response from Venice')
-      }
-
-      const params =
-        ctx.chat.type === 'private'
-          ? {}
-          : { reply_parameters: { message_id: ctx.message.message_id } }
-
-      await ctx.reply(completion, params)
+      await this.handleTextCompletion(ctx)
     })
 
     this.bot.on(message('photo'), async (ctx) => {
@@ -152,58 +152,7 @@ export class Bot {
         content,
       })
 
-      const completion = await this.handleTextCompletion(ctx)
-
-      if (!completion) {
-        return ctx.reply('Error: No response from Venice')
-      }
-
-      const params =
-        ctx.chat.type === 'private'
-          ? {}
-          : { reply_parameters: { message_id: ctx.message.message_id } }
-
-      await ctx.reply(completion, params)
-    })
-
-    this.bot.on(message('document'), async (ctx) => {
-      const fileId = ctx.message.document.file_id
-      const fileLink = await ctx.telegram.getFileLink(fileId)
-      const caption = ctx.message.caption
-
-      if (ctx.session.currentCommand) {
-        return ctx.reply(`/help`)
-      }
-
-      const content: ChatCompletionContentPart[] = caption
-        ? [
-            {
-              type: 'text',
-              text: caption,
-            },
-          ]
-        : []
-      content.push({
-        type: 'image_url',
-        image_url: { url: fileLink.toString() },
-      })
-      this.addAndTruncateChatHistory(ctx, {
-        role: 'user',
-        content,
-      })
-
-      const completion = await this.handleTextCompletion(ctx)
-
-      if (!completion) {
-        return ctx.reply('Error: No response from Venice')
-      }
-
-      const params =
-        ctx.chat.type === 'private'
-          ? {}
-          : { reply_parameters: { message_id: ctx.message.message_id } }
-
-      await ctx.reply(completion, params)
+      await this.handleTextCompletion(ctx)
     })
 
     this.bot.on('callback_query', async (ctx) => {
@@ -239,37 +188,55 @@ export class Bot {
     })
   }
 
-  private async handleTextCompletion(
-    ctx: ContextWithSession
-  ): Promise<string | null> {
-    await ctx.sendChatAction('typing')
-
+  private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
     const messages: ChatCompletionMessageParam[] = []
-    if (this.config.ia.privateChatSystemPrompt) {
+
+    if (ctx.chatType === 'private' && this.config.ia.privateChatSystemPrompt) {
       messages.push({
         role: 'system',
         content: this.config.ia.privateChatSystemPrompt,
       })
+    } else if (
+      ctx.chatType === 'group' &&
+      this.config.ia.groupChatSystemPrompt
+    ) {
+      messages.push({
+        role: 'system',
+        content: this.config.ia.groupChatSystemPrompt,
+      })
     }
+
     messages.push(
       ...this.getTruncatedChatHistory(
         ctx,
         ctx.session.config.textModel.model_spec.availableContextTokens
       )
     )
+
+    await ctx.sendChatAction('typing')
+
     const completion = await chatCompletion({
       model: ctx.session.config.textModel.id,
       messages,
     })
 
-    if (!completion) {
-      await ctx.reply('Error: No response from model')
-      return null
+    if (ctx.chatType === 'private') {
+      if (!completion) {
+        await ctx.reply(`Error: no response from model`)
+        return
+      }
+      await ctx.reply(completion)
     }
 
-    ctx.session.messages.push({ role: 'assistant', content: completion })
+    if (ctx.chatType === 'group' && completion && ctx.message) {
+      await ctx.reply(completion, {
+        reply_parameters: { message_id: ctx.message.message_id },
+      })
+    }
 
-    return completion
+    if (completion) {
+      ctx.session.messages.push({ role: 'assistant', content: completion })
+    }
   }
 
   private addAndTruncateChatHistory(
