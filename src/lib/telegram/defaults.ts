@@ -59,10 +59,16 @@ export const defaultSession: Session = {
 }
 
 export const defaultConfig: Config = {
-  defaultMaxTokens: 256000,
-  privateChatSystemPrompt:
-    'You are a Telegram bot assistant. Keep responses short and concise when possible.',
-  groupChatSystemPrompt:
-    'You are an assistant in a Telegram group of friends. Give short and concise responses only when necessary. Every message is prepended with the name of the user.',
-  whitelistedUsers: [],
+  telegram: {
+    botUsername: '',
+    whitelistedUsers: [],
+    maxSessionMessages: 100,
+  },
+  ia: {
+    defaultMaxTokens: 256000,
+    privateChatSystemPrompt:
+      'You are a Telegram bot assistant. Keep responses short and concise when possible.',
+    groupChatSystemPrompt:
+      'You are an assistant in a Telegram group. Give short and concise responses only when necessary. Every message is prepended with the name of the user.',
+  },
 }

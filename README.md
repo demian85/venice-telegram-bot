@@ -17,10 +17,10 @@ Your personal Venice assistant as a telegram bot. It can be added to groups.
 
 ## Setup
 
-- Generate an Venice API Key: https://venice.ai/settings/api
+- Create an Venice API Key: https://venice.ai/settings/api
 - Create a Telegram bot: https://t.me/BotFather
-- Create `.env` file and fill in the variables from `sample.env`
-- Optional: Rename `bot.config.sample` to `bot.config.ts` and override necessary properties
+- Create a `.env` file and fill in the variables from `sample.env`
+- Optional: Rename `bot.config.ts.sample` to `bot.config.ts` and override the necessary properties
 - `npm i`
 
 ### Development

@@ -7,10 +7,16 @@ export interface OpenAIResponseError {
 }
 
 export interface Config {
-  defaultMaxTokens: number
-  privateChatSystemPrompt: string
-  groupChatSystemPrompt: string
-  whitelistedUsers: string[]
+  telegram: {
+    botUsername: string
+    whitelistedUsers: string[]
+    maxSessionMessages: number
+  }
+  ia: {
+    defaultMaxTokens: number
+    privateChatSystemPrompt: string
+    groupChatSystemPrompt: string
+  }
 }
 
 interface ImageModelConstraints {

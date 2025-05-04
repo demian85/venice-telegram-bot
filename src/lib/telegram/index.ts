@@ -33,7 +33,7 @@ export class Bot {
           password: process.env.PG_PASSWORD,
         }),
         getSessionKey: (ctx) => {
-          return `telegraf:${ctx.chat?.id}`
+          return `telegraf:${ctx.chat?.id ?? ctx.from?.id}`
         },
       })
     )
@@ -55,7 +55,7 @@ export class Bot {
         throw new Error('Bot not allowed in groups')
       }
 
-      const whitelistedUsers = this.config.whitelistedUsers
+      const whitelistedUsers = this.config.telegram.whitelistedUsers
 
       if (
         !ctx.chat?.username ||
@@ -245,10 +245,10 @@ export class Bot {
     await ctx.sendChatAction('typing')
 
     const messages: ChatCompletionMessageParam[] = []
-    if (this.config.privateChatSystemPrompt) {
+    if (this.config.ia.privateChatSystemPrompt) {
       messages.push({
         role: 'system',
-        content: this.config.privateChatSystemPrompt,
+        content: this.config.ia.privateChatSystemPrompt,
       })
     }
     messages.push(
@@ -277,8 +277,10 @@ export class Bot {
     msgPart: ChatCompletionMessageParam
   ): void {
     ctx.session.messages.push(msgPart)
-    // keep the last 100 messages in session
-    ctx.session.messages = ctx.session.messages.slice(-100)
+    // keep the last X messages in session
+    ctx.session.messages = ctx.session.messages.slice(
+      -this.config.telegram.maxSessionMessages
+    )
   }
 
   private getTruncatedChatHistory(
@@ -305,7 +307,7 @@ export class Bot {
           .join(' ')
       }
       tokenCount += countTokens(contentString)
-      if (tokenCount <= (maxTokens || this.config.defaultMaxTokens)) {
+      if (tokenCount <= (maxTokens || this.config.ia.defaultMaxTokens)) {
         output.push(message)
       }
     }
