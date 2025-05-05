@@ -239,13 +239,24 @@ export class Bot {
         await ctx.reply(`Error: no response from model`)
         return
       }
-      await ctx.reply(completion)
+      try {
+        await ctx.reply(completion, { parse_mode: 'Markdown' })
+      } catch (err) {
+        await ctx.reply(completion)
+      }
     }
 
     if (ctx.chatType === 'group' && completion && ctx.message) {
-      await ctx.reply(completion, {
-        reply_parameters: { message_id: ctx.message.message_id },
-      })
+      try {
+        await ctx.reply(completion, {
+          reply_parameters: { message_id: ctx.message.message_id },
+          parse_mode: 'Markdown',
+        })
+      } catch (err) {
+        await ctx.reply(completion, {
+          reply_parameters: { message_id: ctx.message.message_id },
+        })
+      }
     }
 
     if (completion) {
