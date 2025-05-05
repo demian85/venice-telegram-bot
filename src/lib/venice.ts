@@ -12,18 +12,17 @@ const openai = new OpenAI({
 })
 
 export async function chatCompletion(
-  params: ChatCompletionCreateParamsNonStreaming
+  inputParams: ChatCompletionCreateParamsNonStreaming
 ): Promise<string | null> {
+  const params = {
+    ...inputParams,
+    model: `${inputParams.model}:enable_web_search=auto`,
+  }
+
   logger.debug({ params }, 'Sending Venice chat completion request...')
 
   try {
-    const completion = await openai.chat.completions.create({
-      ...params,
-      // @ts-ignore
-      venice_parameters: {
-        enable_web_search: 'auto',
-      },
-    })
+    const completion = await openai.chat.completions.create(params)
     const response = completion.choices[0].message.content
 
     logger.debug({ response }, 'Venice response')
