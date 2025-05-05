@@ -4,8 +4,8 @@ services:
     environment:
       POSTGRES_USER: ${PG_USER}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
-    ports:
-      - '5432:5432'
+    # ports:
+    #   - '5432:5432'
     volumes:
       - venice-bot-db:/var/lib/postgresql/data
     restart: always
