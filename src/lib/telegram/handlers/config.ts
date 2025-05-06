@@ -1,8 +1,9 @@
 import { CallbackQuery } from 'telegraf/typings/core/types/typegram'
 import { CallbackQueryContext, MessageContext } from '../types'
 import { callbackError, cancelCommand } from './util'
-import { listModels } from '@lib/venice'
+import { listModels } from '@lib/api'
 import { ModelData } from '@lib/types'
+import logger from '@lib/logger'
 
 const modelNameMappings: Record<string, string> = {
   // text models
@@ -79,6 +80,7 @@ export default {
         await ctx.answerCbQuery()
       } catch (err) {
         const error = err as Error
+        logger.error(error)
         return callbackError(ctx, error.message)
       }
     },

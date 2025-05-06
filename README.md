@@ -15,6 +15,17 @@ Your personal Venice assistant as a telegram bot. It can be added to groups.
 - ⌛ Fine-tuning
 - ⌛ Autonomy
 
+## Bot commands
+
+```
+clear - Clear chat history
+abort - Abort current operation
+config - Configuration options
+image - Generate an image
+code - Query the coding model
+tts - Text to speech
+```
+
 ## Setup
 
 - Create an Venice API Key: https://venice.ai/settings/api

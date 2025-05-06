@@ -74,3 +74,36 @@ export interface ModelData {
 export interface ModelList {
   data: ModelData[]
 }
+
+export interface ImageGenerationParams {
+  model: string
+  prompt: string
+  cfg_scale?: number
+  embed_exif_metadata?: boolean
+  format?: 'jpeg' | 'png' | 'webp'
+  height?: number
+  hide_watermark?: boolean
+  inpaint?: {
+    source_image_base64: string
+    strength: number
+    mask?: unknown
+  }
+  lora_strength?: number
+  negative_prompt?: string
+  safe_mode?: boolean
+  steps?: number
+  style_preset?: string
+  width?: number
+}
+
+export interface ImageGenerationResponse {
+  id: string
+  images: string[]
+  request?: string
+  timing: {
+    inferenceDuration: number
+    inferencePreprocessingTime: number
+    inferenceQueueTime: number
+    total: number
+  }
+}

@@ -1,4 +1,4 @@
-import { CallbackQueryContext } from '../types'
+import { CallbackQueryContext, ContextWithSession } from '../types'
 
 export async function callbackError(
   ctx: CallbackQueryContext,
@@ -8,7 +8,7 @@ export async function callbackError(
   return cancelCommand(ctx)
 }
 
-export async function cancelCommand(ctx: CallbackQueryContext): Promise<void> {
+export async function cancelCommand(ctx: ContextWithSession): Promise<void> {
   ctx.session.currentCommand = null
   ctx.session.availableModels = []
 }

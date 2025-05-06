@@ -4,8 +4,8 @@ import logger from '@lib/logger'
 
 import { Postgres } from '@telegraf/session/pg'
 import { ContextWithSession, Session } from './types'
-import handlers from './handlers'
-import { chatCompletion } from '@lib/venice'
+import commandHandlers from './handlers'
+import { chatCompletion } from '@lib/api'
 import {
   ChatCompletionContentPart,
   ChatCompletionMessageParam,
@@ -13,6 +13,7 @@ import {
 import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config } from '@lib/types'
+import { generateImageHandler } from './handlers/image'
 
 export class Bot {
   private config
@@ -35,11 +36,11 @@ export class Bot {
         getSessionKey: (ctx) => {
           return `telegraf:${ctx.chat?.id ?? ctx.from?.id}`
         },
+        defaultSession: (_ctx) => defaultSession,
       })
     )
 
     this.bot.use((ctx, _next) => {
-      ctx.session ??= defaultSession
       ctx.chatType = ctx.chat?.type === 'private' ? 'private' : 'group'
 
       logger.debug(
@@ -47,7 +48,6 @@ export class Bot {
           message: ctx.message,
           session: ctx.session,
           update: ctx.update,
-          updateType: ctx.updateType,
           chatType: ctx.chatType,
         },
         'Middleware call'
@@ -77,7 +77,7 @@ export class Bot {
     this.bot.start((ctx) => ctx.reply(`Ask me anything!`))
 
     this.bot.help((ctx) =>
-      ctx.reply(`Available commands: /help, /config, /new`)
+      ctx.reply(`Available commands: /help, /config, /clear, /image`)
     )
 
     this.bot.command('abort', async (ctx) => {
@@ -85,13 +85,35 @@ export class Bot {
       await ctx.reply(`Operation aborted`)
     })
 
-    this.bot.command('config', async (ctx) => {
-      await handlers.config.message[0](ctx)
-    })
-
-    this.bot.command('new', async (ctx) => {
+    this.bot.command('clear', async (ctx) => {
       ctx.session.messages = []
       await ctx.reply(`Chat history deleted. Starting a new chat...`)
+    })
+
+    this.bot.command('config', async (ctx) => {
+      if (ctx.session.currentCommand) {
+        ctx.session.currentCommand = null
+        await ctx.reply(`Previous command aborted`)
+      }
+      await commandHandlers.config.message[0](ctx)
+    })
+
+    this.bot.command('image', async (ctx) => {
+      if (ctx.session.currentCommand) {
+        ctx.session.currentCommand = null
+        await ctx.reply(`Previous command aborted`)
+      }
+      const commandEntity =
+        ctx.message.entities?.[0]?.type === 'bot_command' &&
+        ctx.message.entities?.[0]
+      const messageText = commandEntity
+        ? ctx.message.text.substring(commandEntity.offset).trim()
+        : ctx.message.text.trim()
+      if (messageText) {
+        await generateImageHandler(ctx, messageText)
+      } else {
+        await commandHandlers.image.message[0](ctx)
+      }
     })
 
     this.bot.on(message('text'), async (ctx) => {
@@ -101,15 +123,23 @@ export class Bot {
         return ctx.reply(`/help`)
       }
 
+      const isCommand =
+        ctx.message.entities?.find((v) => v.type === 'bot_command')?.offset ===
+        0
+
+      if (isCommand) {
+        return ctx.reply(`Unknown command. /help`)
+      }
+
       const cmd = ctx.session.currentCommand
 
       if (cmd !== null) {
-        const cmdId = cmd.id as keyof typeof handlers
-        const handler = handlers?.[cmdId].message[cmd.step]
+        const cmdId = cmd.id as keyof typeof commandHandlers
+        const handler = commandHandlers?.[cmdId].message[cmd.step]
         if (!handler) {
           return ctx.reply(`/help`)
         }
-        return handlers?.[cmdId].message[cmd.step](ctx)
+        return commandHandlers?.[cmdId].message[cmd.step](ctx)
       }
 
       const userName = ctx.message.from.first_name ?? ctx.message.from.username
@@ -176,10 +206,9 @@ export class Bot {
         return ctx.answerCbQuery('Invalid callback')
       }
 
-      const cmdId = cmd.id as keyof typeof handlers
-      const handler = handlers?.[cmdId].callbackQuery[cmd.step]
+      const cmdId = cmd.id as keyof typeof commandHandlers
+      const handler = commandHandlers?.[cmdId].callbackQuery[cmd.step]
 
-      // @ts-ignore
       if (handler) {
         return handler(ctx)
       }
