@@ -10,30 +10,19 @@ import OpenAI from 'openai'
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
 import { join } from 'node:path'
 
-const BASE_URL = 'https://api.venice.ai/api/v1'
-
-const openai = new OpenAI({
-  apiKey: process.env.VENICE_API_KEY,
-  baseURL: BASE_URL,
-})
-
 export async function chatCompletion(
   inputParams: ChatCompletionCreateParamsNonStreaming
 ): Promise<string | null> {
-  const params = {
-    ...inputParams,
-    model: `${inputParams.model}:enable_web_search=auto`,
-  }
-
-  logger.debug({ params }, 'Sending Venice chat completion request...')
-
   try {
-    const completion = await openai.chat.completions.create(params)
-    const response = completion.choices[0].message.content
-
-    logger.debug({ response }, 'Venice response')
-
-    return response
+    const response: OpenAI.Chat.Completions.ChatCompletion = await apiPOST(
+      '/chat/completions',
+      {
+        ...inputParams,
+        model: `${inputParams.model}:enable_web_search=auto`,
+      }
+    )
+    const content = response.choices[0].message.content
+    return content
   } catch (err) {
     handleError(err as OpenAIResponseError)
     throw err

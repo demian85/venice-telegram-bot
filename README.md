@@ -21,6 +21,7 @@ Your personal Venice assistant as a telegram bot. It can be added to groups.
 clear - Clear chat history
 abort - Abort current operation
 config - Configuration options
+info - Configuration details
 image - Generate an image
 code - Query the coding model
 tts - Text to speech

@@ -14,6 +14,7 @@ import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
+import { escapeMarkdownV2 } from './util'
 
 export class Bot {
   private config
@@ -74,47 +75,7 @@ export class Bot {
       return _next()
     })
 
-    this.bot.start((ctx) => ctx.reply(`Ask me anything!`))
-
-    this.bot.help((ctx) =>
-      ctx.reply(`Available commands: /help, /config, /clear, /image`)
-    )
-
-    this.bot.command('abort', async (ctx) => {
-      ctx.session.currentCommand = null
-      await ctx.reply(`Operation aborted`)
-    })
-
-    this.bot.command('clear', async (ctx) => {
-      ctx.session.messages = []
-      await ctx.reply(`Chat history deleted. Starting a new chat...`)
-    })
-
-    this.bot.command('config', async (ctx) => {
-      if (ctx.session.currentCommand) {
-        ctx.session.currentCommand = null
-        await ctx.reply(`Previous command aborted`)
-      }
-      await commandHandlers.config.message[0](ctx)
-    })
-
-    this.bot.command('image', async (ctx) => {
-      if (ctx.session.currentCommand) {
-        ctx.session.currentCommand = null
-        await ctx.reply(`Previous command aborted`)
-      }
-      const commandEntity =
-        ctx.message.entities?.[0]?.type === 'bot_command' &&
-        ctx.message.entities?.[0]
-      const messageText = commandEntity
-        ? ctx.message.text.substring(commandEntity.offset).trim()
-        : ctx.message.text.trim()
-      if (messageText) {
-        await generateImageHandler(ctx, messageText)
-      } else {
-        await commandHandlers.image.message[0](ctx)
-      }
-    })
+    this.buildCommands()
 
     this.bot.on(message('text'), async (ctx) => {
       const messageText = ctx.message.text.trim()
@@ -228,6 +189,71 @@ export class Bot {
   async init() {
     await this.bot.launch(() => {
       logger.info({ config: this.config }, 'Telegram bot is up and running')
+    })
+  }
+
+  private buildCommands() {
+    type CommandContext = Parameters<typeof this.bot.command>[2]
+
+    const commands: Record<string, CommandContext> = {
+      help: async (ctx) =>
+        await ctx.reply(
+          `Available commands: ${Object.keys(commands)
+            .map((cmd) => `/${cmd}`)
+            .join(', ')}`
+        ),
+      abort: async (ctx) => {
+        ctx.session.currentCommand = null
+        await ctx.reply(`Operation aborted`)
+      },
+      clear: async (ctx) => {
+        ctx.session.messages = []
+        await ctx.reply(`Chat history deleted. Starting a new chat...`)
+      },
+      config: async (ctx) => {
+        if (ctx.session.currentCommand) {
+          ctx.session.currentCommand = null
+          await ctx.reply(`Previous command aborted`)
+        }
+        await commandHandlers.config.message[0](ctx)
+      },
+      info: async (ctx) => {
+        if (ctx.session.currentCommand) {
+          ctx.session.currentCommand = null
+          await ctx.reply(`Previous command aborted`)
+        }
+        await ctx.replyWithMarkdownV2(
+          `
+          Current selected models are:
+          \\-*Text*: ${escapeMarkdownV2(ctx.session.config.textModel.id)}
+          \\-*Image*: ${escapeMarkdownV2(ctx.session.config.imageModel.id)}
+          \\-*Code*: ${escapeMarkdownV2(ctx.session.config.codingModel.id)}`.trim()
+        )
+      },
+      image: async (ctx) => {
+        if (ctx.session.currentCommand) {
+          ctx.session.currentCommand = null
+          await ctx.reply(`Previous command aborted`)
+        }
+        const commandEntity =
+          ctx.message.entities?.[0]?.type === 'bot_command' &&
+          ctx.message.entities?.[0]
+        const messageText = commandEntity
+          ? ctx.message.text.substring(commandEntity.length).trim()
+          : ctx.message.text.trim()
+
+        if (messageText) {
+          await generateImageHandler(ctx, messageText)
+        } else {
+          await commandHandlers.image.message[0](ctx)
+        }
+      },
+    }
+
+    this.bot.start((ctx) => ctx.reply(`Ask me anything!`))
+
+    Object.entries(commands).forEach(([cmd, handler]) => {
+      this.bot.command(cmd, handler)
     })
   }
 
