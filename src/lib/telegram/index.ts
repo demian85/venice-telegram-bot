@@ -14,7 +14,7 @@ import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
-import { escapeMarkdownV2 } from './util'
+import { escapeMarkdownV2, getTextFromCommand } from './util'
 
 export class Bot {
   private config
@@ -147,9 +147,14 @@ export class Bot {
         return
       }
 
+      const caption = ctx.message.caption
+      const isMention = ctx.message.caption_entities?.find(
+        (v) =>
+          v.type === 'mention' &&
+          caption?.substring(0, v.length) === this.config.telegram.botUsername
+      )
       const fileId = bestPhoto.file_id
       const fileLink = await ctx.telegram.getFileLink(fileId)
-      const caption = ctx.message.caption
 
       const content: ChatCompletionContentPart[] = caption
         ? [
@@ -169,7 +174,12 @@ export class Bot {
         content,
       })
 
-      await this.handleTextCompletion(ctx)
+      if (
+        (ctx.chatType === 'group' && caption && isMention) ||
+        ctx.chatType === 'private'
+      ) {
+        await this.handleTextCompletion(ctx)
+      }
     })
 
     this.bot.on('callback_query', async (ctx) => {
@@ -246,12 +256,7 @@ export class Bot {
           ctx.session.currentCommand = null
           await ctx.reply(`Previous command aborted`)
         }
-        const commandEntity =
-          ctx.message.entities?.[0]?.type === 'bot_command' &&
-          ctx.message.entities?.[0]
-        const messageText = commandEntity
-          ? ctx.message.text.substring(commandEntity.length).trim()
-          : ctx.message.text.trim()
+        const messageText = getTextFromCommand(ctx)
 
         if (messageText) {
           await generateImageHandler(ctx, messageText)
