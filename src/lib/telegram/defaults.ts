@@ -14,6 +14,8 @@ const defaultTextModel: ModelData = {
       supportsVision: true,
       supportsWebSearch: true,
     },
+    modelSource:
+      'https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
   },
   object: 'model',
   owned_by: 'venice.ai',
@@ -22,7 +24,10 @@ const defaultTextModel: ModelData = {
 
 const defaultImageModel: ModelData = {
   id: 'venice-sd35',
-  model_spec: {},
+  model_spec: {
+    modelSource:
+      'https://huggingface.co/stabilityai/stable-diffusion-3.5-large',
+  },
   object: 'model',
   owned_by: 'venice.ai',
   type: 'image',
@@ -41,6 +46,8 @@ const defaultCodingModel: ModelData = {
       supportsVision: false,
       supportsWebSearch: false,
     },
+    modelSource:
+      'https://huggingface.co/deepseek-ai/deepseek-coder-v2-lite-Instruct',
   },
   object: 'model',
   owned_by: 'venice.ai',

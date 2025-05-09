@@ -244,11 +244,15 @@ export class Bot {
           ctx.session.currentCommand = null
           await ctx.reply(`Previous command aborted`)
         }
-        await ctx.replyWithMarkdownV2(
+        await ctx.reply(
           `Current selected models are:
-\\-*Text*: ${escapeMarkdownV2(ctx.session.config.textModel.id)}
-\\-*Image*: ${escapeMarkdownV2(ctx.session.config.imageModel.id)}
-\\-*Code*: ${escapeMarkdownV2(ctx.session.config.codingModel.id)}`.trim()
+-*Text*: [${ctx.session.config.textModel.id}](${ctx.session.config.textModel.model_spec.modelSource})
+-*Image*: [${ctx.session.config.imageModel.id}](${ctx.session.config.imageModel.model_spec.modelSource})
+-*Code*: [${ctx.session.config.codingModel.id}](${ctx.session.config.codingModel.model_spec.modelSource})`.trim(),
+          {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: true },
+          }
         )
       },
       image: async (ctx) => {
