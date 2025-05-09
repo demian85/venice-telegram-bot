@@ -1,9 +1,6 @@
-export interface OpenAIResponseError {
-  message: string
-  response?: {
-    status: string
-    data: unknown
-  }
+export interface VeniceResponseError {
+  details?: string
+  error?: string
 }
 
 export interface Config {

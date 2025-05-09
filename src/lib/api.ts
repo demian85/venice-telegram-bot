@@ -4,58 +4,52 @@ import {
   ImageGenerationResponse,
   ModelList,
   ModelType,
-  OpenAIResponseError,
+  VeniceResponseError,
 } from '@lib/types'
 import OpenAI from 'openai'
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
 import { join } from 'node:path'
 
+class VeniceApiError extends Error {
+  public details!: string
+
+  constructor(message: string, details?: string) {
+    super(message)
+    this.details = details ?? ''
+  }
+}
+
 export async function chatCompletion(
   inputParams: ChatCompletionCreateParamsNonStreaming
 ): Promise<string | null> {
-  try {
-    const response: OpenAI.Chat.Completions.ChatCompletion = await apiPOST(
-      '/chat/completions',
-      {
-        ...inputParams,
-        model: `${inputParams.model}:enable_web_search=auto`,
-      }
-    )
-    const content = response.choices[0].message.content
-    return content
-  } catch (err) {
-    handleError(err as OpenAIResponseError)
-    throw err
-  }
+  const response: OpenAI.Chat.Completions.ChatCompletion = await apiPOST(
+    '/chat/completions',
+    {
+      ...inputParams,
+      model: `${inputParams.model}:enable_web_search=auto`,
+    }
+  )
+  const content = response.choices[0].message.content
+  return content
 }
 
 export async function generateImage(
   params: ImageGenerationParams
 ): Promise<ImageGenerationResponse> {
-  try {
-    const response = await apiPOST('/image/generate', {
-      embed_exif_metadata: false,
-      format: 'webp',
-      height: 1024,
-      hide_watermark: true,
-      safe_mode: false,
-      ...params,
-    })
-    return response as ImageGenerationResponse
-  } catch (err) {
-    handleError(err as OpenAIResponseError)
-    throw err
-  }
+  const response = await apiPOST('/image/generate', {
+    embed_exif_metadata: false,
+    format: 'webp',
+    height: 1024,
+    hide_watermark: true,
+    safe_mode: false,
+    ...params,
+  })
+  return response as ImageGenerationResponse
 }
 
 export async function listModels(type?: ModelType): Promise<ModelList> {
-  try {
-    const models = await apiGET('/models', type && `type=${type}`)
-    return models as ModelList
-  } catch (err) {
-    handleError(err as OpenAIResponseError)
-    throw err
-  }
+  const models = await apiGET('/models', type && `type=${type}`)
+  return models as ModelList
 }
 
 async function apiGET(path: string, qs?: string) {
@@ -90,7 +84,15 @@ async function apiCall(
   })
 
   if (!response.ok) {
-    throw new Error(`Error fetching from Venice API: ${response.statusText}`)
+    const errorMessage = `Error calling Venice API: ${response.statusText}`
+    if (response.status >= 500) {
+      throw new VeniceApiError(errorMessage)
+    }
+    const responseJson = (await response.json()) as VeniceResponseError
+    const errorDetails = `${responseJson.error}. ${responseJson.details}`.trim()
+    const err = new VeniceApiError(errorMessage, errorDetails)
+    logger.error({ err })
+    throw err
   }
 
   const responseJson = await response.json()
@@ -98,13 +100,4 @@ async function apiCall(
   logger.debug({ response }, 'Venice API JSON response')
 
   return responseJson
-}
-
-function handleError(error: OpenAIResponseError) {
-  if (error.response) {
-    const { status, data } = error.response
-    logger.error({ status, data })
-  } else {
-    logger.error({ err: error })
-  }
 }
