@@ -137,7 +137,7 @@ export class Bot {
 
       const photo = ctx.message.photo
       const bestPhoto = photo.find(
-        (item) => item.width >= 64 && item.height >= 64
+        (item) => item.width >= 240 && item.height >= 240
       )
 
       if (!bestPhoto) {
@@ -362,12 +362,16 @@ export class Bot {
     const output: ChatCompletionMessageParam[] = []
     const reversedHistory = [...ctx.session.messages].reverse()
     let tokenCount = 0
+    let imageUrlAdded = false
 
     for (const message of reversedHistory) {
       let contentString = ''
       if (typeof message.content === 'string') {
         contentString = message.content
       } else if (Array.isArray(message.content)) {
+        if (imageUrlAdded) {
+          continue
+        }
         contentString = message.content
           .map((m) =>
             m.type === 'text'
@@ -377,6 +381,7 @@ export class Bot {
                 : ''
           )
           .join(' ')
+        imageUrlAdded = true
       }
       tokenCount += countTokens(contentString)
       if (tokenCount <= (maxTokens || this.config.ia.defaultMaxTokens)) {
