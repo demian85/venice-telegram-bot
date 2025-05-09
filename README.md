@@ -1,6 +1,7 @@
 # Venice Bot
 
-Your personal Venice assistant as a telegram bot. It can be added to groups.
+Your personal Venice assistant as a telegram bot.
+<br>It can be added to groups, but privacy mode is recommended so it only responds when mentioned.
 
 **Work in progress...**
 
@@ -10,12 +11,15 @@ Your personal Venice assistant as a telegram bot. It can be added to groups.
 - ✅ Vision
 - ✅ Web search
 - ✅ Image creation
+- ⌛ Image enhancements and upscaling
 - ⌛ Text To Speech
 - ⌛ Speech to Text
-- ⌛ Fine-tuning
+- ⌛ Characters
 - ⌛ Autonomy
 
 ## Bot commands
+
+_Not all of them are implemented yet._
 
 ```
 clear - Clear chat history
@@ -23,6 +27,7 @@ abort - Abort current operation
 config - Configuration options
 info - Configuration details
 image - Generate an image
+enhance = Enhance an image
 code - Query the coding model
 tts - Text to speech
 ```
