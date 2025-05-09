@@ -14,7 +14,7 @@ import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
-import { escapeMarkdownV2, getTextFromCommand } from './util'
+import { getTextFromCommand } from './util'
 
 export class Bot {
   private config
@@ -148,22 +148,27 @@ export class Bot {
       }
 
       const caption = ctx.message.caption
-      const isMention = ctx.message.caption_entities?.find(
-        (v) =>
-          v.type === 'mention' &&
-          caption?.substring(0, v.length) === this.config.telegram.botUsername
-      )
-      const fileId = bestPhoto.file_id
-      const fileLink = await ctx.telegram.getFileLink(fileId)
-
-      const content: ChatCompletionContentPart[] = caption
+      const botMention =
+        caption &&
+        ctx.message.caption_entities?.find(
+          (v) =>
+            v.type === 'mention' &&
+            caption?.substring(0, v.length) === this.config.telegram.botUsername
+        )
+      const filteredCaption = botMention
+        ? caption.substring(botMention.length).trim()
+        : caption
+      const content: ChatCompletionContentPart[] = filteredCaption
         ? [
             {
               type: 'text',
-              text: caption,
+              text: filteredCaption,
             },
           ]
         : []
+      const fileId = bestPhoto.file_id
+      const fileLink = await ctx.telegram.getFileLink(fileId)
+
       content.push({
         type: 'image_url',
         image_url: { url: fileLink.toString() },
@@ -175,7 +180,7 @@ export class Bot {
       })
 
       if (
-        (ctx.chatType === 'group' && caption && isMention) ||
+        (ctx.chatType === 'group' && caption && botMention) ||
         ctx.chatType === 'private'
       ) {
         await this.handleTextCompletion(ctx)
