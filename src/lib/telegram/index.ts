@@ -131,14 +131,25 @@ export class Bot {
     })
 
     this.bot.on(message('photo'), async (ctx) => {
-      const photo = ctx.message.photo
-      const fileId = photo[photo.length - 1].file_id
-      const fileLink = await ctx.telegram.getFileLink(fileId)
-      const caption = ctx.message.caption
-
       if (ctx.session.currentCommand) {
         return ctx.reply(`/help`)
       }
+
+      const photo = ctx.message.photo
+      const bestPhoto = photo.find(
+        (item) => item.width >= 64 && item.height >= 64
+      )
+
+      if (!bestPhoto) {
+        if (ctx.chatType === 'private') {
+          await ctx.reply(`Photo is too small.`)
+        }
+        return
+      }
+
+      const fileId = bestPhoto.file_id
+      const fileLink = await ctx.telegram.getFileLink(fileId)
+      const caption = ctx.message.caption
 
       const content: ChatCompletionContentPart[] = caption
         ? [
@@ -152,6 +163,7 @@ export class Bot {
         type: 'image_url',
         image_url: { url: fileLink.toString() },
       })
+
       this.addAndTruncateChatHistory(ctx, {
         role: 'user',
         content,
@@ -223,11 +235,10 @@ export class Bot {
           await ctx.reply(`Previous command aborted`)
         }
         await ctx.replyWithMarkdownV2(
-          `
-          Current selected models are:
-          \\-*Text*: ${escapeMarkdownV2(ctx.session.config.textModel.id)}
-          \\-*Image*: ${escapeMarkdownV2(ctx.session.config.imageModel.id)}
-          \\-*Code*: ${escapeMarkdownV2(ctx.session.config.codingModel.id)}`.trim()
+          `Current selected models are:
+\\-*Text*: ${escapeMarkdownV2(ctx.session.config.textModel.id)}
+\\-*Image*: ${escapeMarkdownV2(ctx.session.config.imageModel.id)}
+\\-*Code*: ${escapeMarkdownV2(ctx.session.config.codingModel.id)}`.trim()
         )
       },
       image: async (ctx) => {
