@@ -103,7 +103,6 @@ export class Bot {
         return commandHandlers?.[cmdId].message[cmd.step](ctx)
       }
 
-      const userName = ctx.message.from.first_name ?? ctx.message.from.username
       const isMention = ctx.message.entities?.find(
         (v) =>
           v.type === 'mention' &&
@@ -114,13 +113,19 @@ export class Bot {
         ? messageText.substring(this.config.telegram.botUsername.length).trim()
         : messageText
 
-      this.addAndTruncateChatHistory(ctx, {
-        role: 'user',
-        content:
-          ctx.chatType === 'private'
-            ? filteredMessageText
-            : `${userName}: ${filteredMessageText}`,
-      })
+      if (ctx.chatType === 'group' && filteredMessageText) {
+        const userName =
+          ctx.message.from.first_name ?? ctx.message.from.username
+        this.addAndTruncateChatHistory(ctx, {
+          role: 'user',
+          content: `${userName}: ${filteredMessageText}`,
+        })
+      } else {
+        this.addAndTruncateChatHistory(ctx, {
+          role: 'user',
+          content: filteredMessageText,
+        })
+      }
 
       if (
         (ctx.chatType === 'group' && isMention) ||
