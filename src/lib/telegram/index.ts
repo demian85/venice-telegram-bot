@@ -289,19 +289,18 @@ export class Bot {
 
   private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
     const messages: ChatCompletionMessageParam[] = []
+    const { privateChatSystemPrompt, groupChatSystemPrompt } = this.config.ia
+    const model = ctx.session.config.textModel
 
-    if (ctx.chatType === 'private' && this.config.ia.privateChatSystemPrompt) {
+    if (ctx.chatType === 'private' && privateChatSystemPrompt) {
       messages.push({
         role: 'system',
-        content: this.config.ia.privateChatSystemPrompt,
+        content: privateChatSystemPrompt,
       })
-    } else if (
-      ctx.chatType === 'group' &&
-      this.config.ia.groupChatSystemPrompt
-    ) {
+    } else if (ctx.chatType === 'group' && groupChatSystemPrompt) {
       messages.push({
         role: 'system',
-        content: this.config.ia.groupChatSystemPrompt,
+        content: groupChatSystemPrompt,
       })
     }
 
@@ -315,7 +314,7 @@ export class Bot {
     await ctx.sendChatAction('typing')
 
     const completionResponse = await chatCompletion({
-      model: ctx.session.config.textModel.id,
+      model: model.id,
       messages,
     })
     const completionText = completionResponse.choices?.[0].message.content
@@ -384,6 +383,7 @@ export class Bot {
   ): ChatCompletionMessageParam[] {
     const output: ChatCompletionMessageParam[] = []
     const reversedHistory = [...ctx.session.messages].reverse()
+    const model = ctx.session.config.textModel
     let tokenCount = 0
     let imageUrlAdded = false
 
@@ -392,7 +392,7 @@ export class Bot {
       if (typeof message.content === 'string') {
         contentString = message.content
       } else if (Array.isArray(message.content)) {
-        if (imageUrlAdded) {
+        if (imageUrlAdded || !model.model_spec.capabilities?.supportsVision) {
           continue
         }
         contentString = message.content
