@@ -2,20 +2,41 @@ import { Config, ModelData } from '@lib/types'
 import { Session } from './types'
 
 const defaultTextModel: ModelData = {
-  id: 'llama-4-maverick-17b',
+  id: 'mistral-31-24b',
   model_spec: {
-    availableContextTokens: 262144,
+    pricing: {
+      input: {
+        usd: 0.5,
+        vcu: 5,
+      },
+      output: {
+        usd: 2,
+        vcu: 20,
+      },
+    },
+    availableContextTokens: 131072,
     capabilities: {
       optimizedForCode: false,
-      quantization: 'fp8',
+      quantization: 'fp16',
       supportsFunctionCalling: true,
       supportsReasoning: false,
       supportsResponseSchema: true,
       supportsVision: true,
       supportsWebSearch: true,
+      supportsLogProbs: false,
+    },
+    constraints: {
+      temperature: {
+        default: 0.15,
+      },
+      top_p: {
+        default: 0.9,
+      },
     },
     modelSource:
-      'https://huggingface.co/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+      'https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503',
+    offline: false,
+    traits: ['default_vision'],
   },
   object: 'model',
   owned_by: 'venice.ai',
@@ -23,10 +44,37 @@ const defaultTextModel: ModelData = {
 }
 
 const defaultImageModel: ModelData = {
+  created: 1743099022,
   id: 'venice-sd35',
   model_spec: {
+    pricing: {
+      generation: {
+        usd: 0.01,
+        vcu: 0.1,
+      },
+      upscale: {
+        '2x': {
+          usd: 0.02,
+          vcu: 0.2,
+        },
+        '4x': {
+          usd: 0.08,
+          vcu: 0.8,
+        },
+      },
+    },
+    constraints: {
+      promptCharacterLimit: 1500,
+      steps: {
+        default: 25,
+        max: 30,
+      },
+      widthHeightDivisor: 16,
+    },
     modelSource:
       'https://huggingface.co/stabilityai/stable-diffusion-3.5-large',
+    offline: false,
+    traits: ['default', 'eliza-default'],
   },
   object: 'model',
   owned_by: 'venice.ai',
@@ -34,8 +82,19 @@ const defaultImageModel: ModelData = {
 }
 
 const defaultCodingModel: ModelData = {
+  created: 1740253117,
   id: 'deepseek-coder-v2-lite',
   model_spec: {
+    pricing: {
+      input: {
+        usd: 0.5,
+        vcu: 5,
+      },
+      output: {
+        usd: 2,
+        vcu: 20,
+      },
+    },
     availableContextTokens: 131072,
     capabilities: {
       optimizedForCode: true,
@@ -45,9 +104,20 @@ const defaultCodingModel: ModelData = {
       supportsResponseSchema: true,
       supportsVision: false,
       supportsWebSearch: false,
+      supportsLogProbs: false,
+    },
+    constraints: {
+      temperature: {
+        default: 0.8,
+      },
+      top_p: {
+        default: 0.9,
+      },
     },
     modelSource:
       'https://huggingface.co/deepseek-ai/deepseek-coder-v2-lite-Instruct',
+    offline: false,
+    traits: [],
   },
   object: 'model',
   owned_by: 'venice.ai',

@@ -7,11 +7,12 @@ import logger from '@lib/logger'
 
 const modelNameMappings: Record<string, string> = {
   // text models
-  'llama-4-maverick-17b': 'Large 256K - Web search - Most Intelligent',
-  'mistral-31-24b': 'Medium 128K - Vision - Web search',
-  'qwen3-4b': 'Small 128K - Fastest - Web search',
-  'qwen-2.5-qwq-32b': 'Reasoning 32K - Web search',
-  'venice-uncensored': 'Uncensored 32K - Web search',
+  'llama-4-maverick-17b': 'Llama 4 Maverick 256K - Vision',
+  'qwen3-235b': 'Large 32K - Most Intelligent',
+  'mistral-31-24b': 'Medium 128K - Vision',
+  'qwen3-4b': 'Small 128K - Fastest',
+  'qwen-2.5-qwq-32b': 'Reasoning 32K',
+  'venice-uncensored': 'Uncensored 32K',
 
   // image models
   'venice-sd35': 'Venice SD35 - Most artistic',
@@ -59,13 +60,17 @@ export default {
 
       try {
         let availableModels
+        let selectedModelId
 
         if (callbackValue === 'text_model') {
           availableModels = await listModels('text')
+          selectedModelId = ctx.session.config.textModel.id
         } else if (callbackValue === 'image_model') {
           availableModels = await listModels('image')
+          selectedModelId = ctx.session.config.imageModel.id
         } else if (callbackValue === 'coding_model') {
           availableModels = await listModels('code')
+          selectedModelId = ctx.session.config.codingModel.id
         }
 
         if (!availableModels) {
@@ -75,7 +80,10 @@ export default {
         ctx.session.availableModels = availableModels.data
 
         await ctx.editMessageReplyMarkup({
-          inline_keyboard: buildModelKeyboardButtons(availableModels.data),
+          inline_keyboard: buildModelKeyboardButtons(
+            availableModels.data,
+            selectedModelId
+          ),
         })
         await ctx.answerCbQuery()
       } catch (err) {
@@ -134,14 +142,18 @@ export default {
   ],
 }
 
-function buildModelKeyboardButtons(availableModels: ModelData[]) {
+function buildModelKeyboardButtons(
+  availableModels: ModelData[],
+  selectedModelId?: string
+) {
   return availableModels
     .filter((model) => !!modelNameMappings[model.id])
     .map((model) => {
       const modelName = modelNameMappings[model.id]
+      const prefix = selectedModelId === model.id ? '✅ ' : ''
       return [
         {
-          text: modelName,
+          text: `${prefix}${modelName}`,
           callback_data: model.id,
         },
       ]

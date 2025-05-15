@@ -57,6 +57,7 @@ export interface ModelData {
       supportsResponseSchema: boolean
       supportsVision: boolean
       supportsWebSearch: boolean
+      supportsLogProbs: boolean
     }
     constraints?: ImageModelConstraints | TextModelConstraints
     modelSource?: string
