@@ -142,10 +142,16 @@ export const defaultConfig: Config = {
     maxSessionMessages: 100,
   },
   ia: {
-    defaultMaxTokens: 256000,
-    privateChatSystemPrompt:
-      'You are a Telegram bot assistant. Keep responses short and concise when possible.',
-    groupChatSystemPrompt:
-      'You are an assistant in a Telegram group. Give short and concise responses only when necessary. Every message is prepended with the name of the user.',
+    defaultMaxTokens: 32000,
+    privateChatSystemPrompt: `Today's date is ${new Date().toISOString()}.
+      You are a Telegram bot assistant. Keep responses short and concise unless specifically requested by the user. 
+      Follow Telegram API-specific rules and respond with valid Markdown V1 formatting.
+      Use "-" characters to format list items. Enclose bold text with one asterisk only. **this is invalid**`,
+    groupChatSystemPrompt: `Today's date is ${new Date().toISOString()}.
+      You are an assistant in a Telegram group of friends. Your name is Venice. 
+      Every message is prepended with the name of the user. Do not prepend your response with anything.
+      Keep responses short and concise unless specifically requested by users.,
+      Follow Telegram API-specific rules and respond with valid Markdown V1 formatting.
+      Use "-" characters to format list items. Enclose bold text with one asterisk only. **this is invalid**.`,
   },
 }

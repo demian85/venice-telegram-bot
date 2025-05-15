@@ -327,7 +327,7 @@ export class Bot {
       try {
         const fullCompletion = `${completionText}\n\n${formatWebCitations(completionResponse)}`
         await ctx.reply(fullCompletion, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'Markdown',
           link_preview_options: { is_disabled: true },
         })
       } catch (err) {
@@ -344,7 +344,7 @@ export class Bot {
         const fullCompletion = `${completionText}\n\n${formatWebCitations(completionResponse)}`
         await ctx.reply(fullCompletion, {
           reply_parameters: { message_id: ctx.message.message_id },
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'Markdown',
           link_preview_options: { is_disabled: true },
         })
       } catch (err) {
