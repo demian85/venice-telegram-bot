@@ -1,3 +1,4 @@
+import { TextCompletionResponse } from '@lib/types'
 import { MessageContext } from './types'
 
 export function escapeMarkdownV2(text: string): string {
@@ -28,6 +29,17 @@ export function escapeMarkdownV2(text: string): string {
   })
 
   return text
+}
+
+export function formatWebCitations(
+  completionResponse: TextCompletionResponse
+): string {
+  return completionResponse.venice_parameters.web_search_citations
+    .slice(0, 5)
+    .map((item) => {
+      return `\\- [${escapeMarkdownV2(item.title)}](${item.url})`
+    })
+    .join('\n')
 }
 
 export function getTextFromCommand(ctx: MessageContext): string {

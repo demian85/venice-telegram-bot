@@ -14,7 +14,7 @@ import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
-import { getTextFromCommand } from './util'
+import { formatWebCitations, getTextFromCommand } from './util'
 
 export class Bot {
   private config
@@ -314,38 +314,56 @@ export class Bot {
 
     await ctx.sendChatAction('typing')
 
-    const completion = await chatCompletion({
+    const completionResponse = await chatCompletion({
       model: ctx.session.config.textModel.id,
       messages,
     })
+    const completionText = completionResponse.choices?.[0].message.content
 
     if (ctx.chatType === 'private') {
-      if (!completion) {
+      if (!completionText) {
         await ctx.reply(`Error: no response from model`)
         return
       }
       try {
-        await ctx.reply(completion, { parse_mode: 'Markdown' })
+        const fullCompletion = `${completionText}\n\n${formatWebCitations(completionResponse)}`
+        await ctx.reply(fullCompletion, {
+          parse_mode: 'MarkdownV2',
+          link_preview_options: { is_disabled: true },
+        })
       } catch (err) {
-        await ctx.reply(completion)
+        logger.error(
+          err,
+          'Markdown parsing error. Retrying with no formatting...'
+        )
+        await ctx.reply(completionText)
       }
     }
 
-    if (ctx.chatType === 'group' && completion && ctx.message) {
+    if (ctx.chatType === 'group' && completionText && ctx.message) {
       try {
-        await ctx.reply(completion, {
+        const fullCompletion = `${completionText}\n\n${formatWebCitations(completionResponse)}`
+        await ctx.reply(fullCompletion, {
           reply_parameters: { message_id: ctx.message.message_id },
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
+          link_preview_options: { is_disabled: true },
         })
       } catch (err) {
-        await ctx.reply(completion, {
+        logger.error(
+          err,
+          'Markdown parsing error. Retrying with no formatting...'
+        )
+        await ctx.reply(completionText, {
           reply_parameters: { message_id: ctx.message.message_id },
         })
       }
     }
 
-    if (completion) {
-      ctx.session.messages.push({ role: 'assistant', content: completion })
+    if (completionText) {
+      ctx.session.messages.push({
+        role: 'assistant',
+        content: completionText,
+      })
     }
   }
 

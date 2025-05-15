@@ -7,9 +7,9 @@ import logger from '@lib/logger'
 
 const modelNameMappings: Record<string, string> = {
   // text models
-  'llama-4-maverick-17b': 'Large 256K - Vision - Web search - Most Intelligent',
+  'llama-4-maverick-17b': 'Large 256K - Web search - Most Intelligent',
   'mistral-31-24b': 'Medium 128K - Vision - Web search',
-  'llama-3.2-3b': 'Small 128K - Fastest - Web search',
+  'qwen3-4b': 'Small 128K - Fastest - Web search',
   'qwen-2.5-qwq-32b': 'Reasoning 32K - Web search',
   'venice-uncensored': 'Uncensored 32K - Web search',
 

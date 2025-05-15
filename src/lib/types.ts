@@ -1,3 +1,5 @@
+import OpenAI from 'openai'
+
 export interface VeniceResponseError {
   details?: string
   error?: string
@@ -102,5 +104,18 @@ export interface ImageGenerationResponse {
     inferencePreprocessingTime: number
     inferenceQueueTime: number
     total: number
+  }
+}
+
+export interface TextCompletionResponse
+  extends OpenAI.Chat.Completions.ChatCompletion {
+  venice_parameters: {
+    include_venice_system_prompt: boolean
+    web_search_citations: {
+      title: string
+      url: string
+      content?: string
+      date?: string
+    }[]
   }
 }

@@ -4,9 +4,9 @@ import {
   ImageGenerationResponse,
   ModelList,
   ModelType,
+  TextCompletionResponse,
   VeniceResponseError,
 } from '@lib/types'
-import OpenAI from 'openai'
 import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
 import { join } from 'node:path'
 
@@ -21,16 +21,14 @@ class VeniceApiError extends Error {
 
 export async function chatCompletion(
   inputParams: ChatCompletionCreateParamsNonStreaming
-): Promise<string | null> {
-  const response: OpenAI.Chat.Completions.ChatCompletion = await apiPOST(
-    '/chat/completions',
-    {
-      ...inputParams,
-      model: `${inputParams.model}:enable_web_search=auto`,
-    }
-  )
-  const content = response.choices[0].message.content
-  return content
+): Promise<TextCompletionResponse> {
+  return apiPOST('/chat/completions', {
+    ...inputParams,
+    venice_parameters: {
+      enable_web_search: 'auto',
+      strip_thinking_response: true,
+    },
+  })
 }
 
 export async function generateImage(
@@ -84,20 +82,26 @@ async function apiCall(
   })
 
   if (!response.ok) {
-    const errorMessage = `Error calling Venice API: ${response.statusText}`
-    if (response.status >= 500) {
-      throw new VeniceApiError(errorMessage)
+    try {
+      const responseJson = (await response.json()) as VeniceResponseError
+      const errorMessage = `Error calling Venice API: ${response.statusText}`
+      const errorDetails =
+        `${responseJson.error}. ${responseJson.details}`.trim()
+      const err = new VeniceApiError(errorMessage, errorDetails)
+      logger.error({ err })
+      throw err
+    } catch (err) {
+      const error = err as Error
+      const errorMessage = `Error calling Venice API: ${error.message}`
+      const veniceErr = new VeniceApiError(errorMessage)
+      logger.error({ err: veniceErr })
+      throw veniceErr
     }
-    const responseJson = (await response.json()) as VeniceResponseError
-    const errorDetails = `${responseJson.error}. ${responseJson.details}`.trim()
-    const err = new VeniceApiError(errorMessage, errorDetails)
-    logger.error({ err })
-    throw err
   }
 
   const responseJson = await response.json()
 
-  logger.debug({ response }, 'Venice API JSON response')
+  logger.debug({ responseJson }, 'Venice API JSON response')
 
   return responseJson
 }
