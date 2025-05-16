@@ -1,16 +1,18 @@
 # Venice Bot
 
 Your personal Venice assistant as a telegram bot.
-<br>It can be added to groups, but privacy mode is recommended so it only responds when mentioned.
+<br>It can be added to groups.
+<br>Remove privacy mode so that every user message is saved. The bot only autocompletes when mentioned.
 
 **Work in progress...**
 
 ## Features
 
 - ✅ Text completion
+- ✅ Code completion
+- ✅ Image creation
 - ✅ Vision
 - ✅ Web search
-- ✅ Image creation
 - ⌛ Image enhancements and upscaling
 - ⌛ Text To Speech
 - ⌛ Speech to Text
@@ -27,8 +29,8 @@ abort - Abort current operation
 config - Configuration options
 info - Configuration details
 image - Generate an image
-enhance = Enhance an image
 code - Query the coding model
+enhance = Enhance an image
 tts - Text to speech
 ```
 

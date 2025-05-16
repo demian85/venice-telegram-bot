@@ -108,6 +108,14 @@ export interface ImageGenerationResponse {
   }
 }
 
+export interface TextCompletionRequest
+  extends OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
+  venice_parameters?: {
+    enable_web_search?: 'auto' | 'on' | 'off'
+    strip_thinking_response?: boolean
+  }
+}
+
 export interface TextCompletionResponse
   extends OpenAI.Chat.Completions.ChatCompletion {
   venice_parameters: {

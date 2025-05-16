@@ -31,7 +31,8 @@ export interface Session {
     imageModel: ModelData
     codingModel: ModelData
   }
-  messages: ChatCompletionMessageParam[]
+  textModelHistory: ChatCompletionMessageParam[]
+  codeModelHistory: ChatCompletionMessageParam[]
   availableModels: ModelData[]
 }
 
@@ -39,6 +40,8 @@ export interface ContextWithSession<U extends Update = Update>
   extends Context<U> {
   session: Session
   chatType: 'private' | 'group'
+  isMention: boolean
+  parsedMessageText: string
 }
 
 export interface Handler {

@@ -4,10 +4,10 @@ import {
   ImageGenerationResponse,
   ModelList,
   ModelType,
+  TextCompletionRequest,
   TextCompletionResponse,
   VeniceResponseError,
 } from '@lib/types'
-import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
 import { join } from 'node:path'
 
 class VeniceApiError extends Error {
@@ -20,15 +20,9 @@ class VeniceApiError extends Error {
 }
 
 export async function chatCompletion(
-  inputParams: ChatCompletionCreateParamsNonStreaming
+  inputParams: TextCompletionRequest
 ): Promise<TextCompletionResponse> {
-  return apiPOST('/chat/completions', {
-    ...inputParams,
-    venice_parameters: {
-      enable_web_search: 'auto',
-      strip_thinking_response: true,
-    },
-  })
+  return apiPOST('/chat/completions', inputParams)
 }
 
 export async function generateImage(
@@ -88,13 +82,11 @@ async function apiCall(
       const errorDetails =
         `${responseJson.error}. ${responseJson.details}`.trim()
       const err = new VeniceApiError(errorMessage, errorDetails)
-      logger.error({ err })
       throw err
     } catch (err) {
       const error = err as Error
       const errorMessage = `Error calling Venice API: ${error.message}`
       const veniceErr = new VeniceApiError(errorMessage)
-      logger.error({ err: veniceErr })
       throw veniceErr
     }
   }

@@ -131,7 +131,8 @@ export const defaultSession: Session = {
     imageModel: defaultImageModel,
     codingModel: defaultCodingModel,
   },
-  messages: [],
+  textModelHistory: [],
+  codeModelHistory: [],
   availableModels: [],
 }
 
