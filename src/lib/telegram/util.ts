@@ -32,14 +32,18 @@ export function escapeMarkdownV2(text: string): string {
 }
 
 export function formatWebCitations(
-  completionResponse: TextCompletionResponse
+  completionResponse: TextCompletionResponse,
+  limit = 3
 ): string {
-  return completionResponse.venice_parameters.web_search_citations
-    .slice(0, 5)
-    .map((item) => {
-      return `\\- [${escapeMarkdownV2(item.title)}](${item.url})`
-    })
-    .join('\n')
+  return (
+    '\n\n' +
+    completionResponse.venice_parameters.web_search_citations
+      .slice(0, limit)
+      .map((item) => {
+        return `- [${item.title}](${item.url})`
+      })
+      .join('\n')
+  )
 }
 
 export function getTextFromCommand(ctx: MessageContext): string {
