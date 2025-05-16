@@ -112,7 +112,7 @@ export default {
           ctx.session.config.textModel = selectedModel
           await ctx.answerCbQuery('')
           await ctx.editMessageText(
-            `Your new text model is *${selectedModelName}*`,
+            `The new text model is *${selectedModelName}*`,
             { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
           )
           return cancelCommand(ctx)
@@ -121,7 +121,7 @@ export default {
           ctx.session.config.imageModel = selectedModel
           await ctx.answerCbQuery('')
           await ctx.editMessageText(
-            `Your new image model is *${selectedModelName}*`,
+            `The new image model is *${selectedModelName}*`,
             { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
           )
           return cancelCommand(ctx)
@@ -130,7 +130,7 @@ export default {
           ctx.session.config.codingModel = selectedModel
           await ctx.answerCbQuery('')
           await ctx.editMessageText(
-            `Your new coding model is *${selectedModelName}*`,
+            `The new coding model is *${selectedModelName}*`,
             { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
           )
           return cancelCommand(ctx)
