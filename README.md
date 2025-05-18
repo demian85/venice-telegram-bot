@@ -1,13 +1,14 @@
 # Venice Bot
 
 Your personal Venice assistant as a telegram bot.
+<br>[Venice.ai](https://venice.ai/) is private and uncensored AI.
 <br>It can be added to groups.
-<br>Remove privacy mode so that every user message is saved. The bot only autocompletes when mentioned.
 
 **Work in progress...**
 
 ## Features
 
+- ✅ Chat history
 - ✅ Text completion
 - ✅ Code completion
 - ✅ Image creation
@@ -19,11 +20,18 @@ Your personal Venice assistant as a telegram bot.
 - ⌛ Characters
 - ⌛ Autonomy
 
-## Bot commands
+## Groups
+
+It is recommended to disable privacy mode so that every user message is persisted in session.
+<br>The bot only autocompletes when mentioned.
+<br>Chat history is persisted in a database and kept separate for text and code completions.
+
+## Commands
 
 _Not all of them are implemented yet._
 
 ```
+help - Show available commands
 clear - Clear chat history
 abort - Abort current operation
 config - Configuration options
