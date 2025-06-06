@@ -321,8 +321,14 @@ export class Bot {
 
   private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
     const model = ctx.session.config.textModel
-    const messages = this.getBaseChatHistory(ctx).concat(
-      ...this.getTruncatedChatHistory(ctx.session.textModelHistory, model)
+    const messages = this.getBaseChatHistory(ctx)
+    const systemPromptText = messages?.[0].content?.toString() ?? ''
+    messages.push(
+      ...this.getTruncatedChatHistory(
+        ctx.session.textModelHistory,
+        model,
+        -countTokens(systemPromptText)
+      )
     )
 
     await ctx.sendChatAction('typing')
@@ -349,8 +355,14 @@ export class Bot {
 
   private async handleCodeCompletion(ctx: ContextWithSession): Promise<void> {
     const model = ctx.session.config.codingModel
-    const messages = this.getBaseChatHistory(ctx).concat(
-      ...this.getTruncatedChatHistory(ctx.session.codeModelHistory, model)
+    const messages = this.getBaseChatHistory(ctx)
+    const systemPromptText = messages?.[0].content?.toString() ?? ''
+    messages.push(
+      ...this.getTruncatedChatHistory(
+        ctx.session.codeModelHistory,
+        model,
+        -countTokens(systemPromptText)
+      )
     )
 
     await ctx.sendChatAction('typing')
@@ -448,7 +460,8 @@ export class Bot {
 
   private getTruncatedChatHistory(
     chatHistotry: ChatCompletionMessageParam[],
-    model: ModelData
+    model: ModelData,
+    tokenCountOffset = 0
   ): ChatCompletionMessageParam[] {
     const output: ChatCompletionMessageParam[] = []
     const reversedHistory = [...chatHistotry].reverse()
@@ -479,7 +492,8 @@ export class Bot {
       if (
         tokenCount <=
         (model.model_spec.availableContextTokens ||
-          this.config.ia.defaultMaxTokens)
+          this.config.ia.defaultMaxTokens) +
+          tokenCountOffset
       ) {
         output.push(message)
       }
