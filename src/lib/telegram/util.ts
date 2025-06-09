@@ -46,6 +46,12 @@ export function formatWebCitations(
   )
 }
 
+export function fullMarkdown2TgMarkdown(input: string): string {
+  return input
+    .replaceAll(/^#+ *(.+)$/gm, '*$1*\n')
+    .replaceAll(/^--- *$/gm, '---------------')
+}
+
 export function getTextFromCommand(ctx: MessageContext): string {
   const commandEntity = ctx.message.entities?.find(
     (item) => item.type === 'bot_command' && item.offset === 0

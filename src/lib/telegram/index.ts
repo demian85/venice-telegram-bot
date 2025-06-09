@@ -14,7 +14,7 @@ import { countTokens } from 'gpt-tokenizer'
 import { defaultSession } from './defaults'
 import { Config, ModelData, TextCompletionResponse } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
-import { formatWebCitations } from './util'
+import { formatWebCitations, fullMarkdown2TgMarkdown } from './util'
 
 export class Bot {
   private config
@@ -401,7 +401,7 @@ export class Bot {
         await ctx.reply(`Error: no response from model`)
         return
       }
-      const fullCompletion = `${completionText}${formatWebCitations(completionResponse)}`
+      const fullCompletion = `${fullMarkdown2TgMarkdown(completionText)}${formatWebCitations(completionResponse)}`
       await ctx.reply(fullCompletion, {
         parse_mode: 'Markdown',
         link_preview_options: { is_disabled: true },
@@ -409,7 +409,7 @@ export class Bot {
     }
 
     if (ctx.chatType === 'group' && completionText && ctx.message) {
-      const fullCompletion = `${completionText}${formatWebCitations(completionResponse)}`
+      const fullCompletion = `${fullMarkdown2TgMarkdown(completionText)}${formatWebCitations(completionResponse)}`
       await ctx.reply(fullCompletion, {
         reply_parameters: { message_id: ctx.message.message_id },
         parse_mode: 'Markdown',
