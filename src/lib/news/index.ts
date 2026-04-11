@@ -1,0 +1,6 @@
+export { FeedReader, type FeedEntry } from './feed-reader'
+export { NewsStore } from './news-store'
+export { RelevanceDetector } from './relevance-detector'
+export { NewsScheduler, type NewsSchedulerConfig } from './scheduler'
+export type { NewsItem, NewsConfig } from './types'
+export { defaultNewsConfig } from './types'
