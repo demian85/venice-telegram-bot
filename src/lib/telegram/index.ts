@@ -2,7 +2,7 @@ import { Telegraf, session } from 'telegraf'
 import { message } from 'telegraf/filters'
 import logger from '@lib/logger'
 
-import { Postgres } from '@telegraf/session/pg'
+import { Redis } from '@telegraf/session/redis'
 import { ContextWithSession, MessageContext, Session } from './types'
 import commandHandlers from './handlers'
 import { chatCompletion } from '@lib/api'
@@ -15,24 +15,27 @@ import { defaultSession } from './defaults'
 import { Config, ModelData, TextCompletionResponse } from '@lib/types'
 import { generateImageHandler } from './handlers/image'
 import { formatWebCitations, fullMarkdown2TgMarkdown } from './util'
+import { AgentService } from '@lib/agent'
+import { createVeniceModel } from '@lib/agent/model'
+import { allTools } from '@lib/agent/tools'
+import { getRedisClient } from '@lib/redis'
 
 export class Bot {
   private config
   private bot
+  private agentService: AgentService | null = null
 
   constructor(config: Config) {
     this.config = config
 
     this.bot = new Telegraf<ContextWithSession>(process.env.TELEGRAM_BOT_TOKEN!)
 
+    const redisClient = getRedisClient()
+
     this.bot.use(
       session({
-        store: Postgres<Session>({
-          host: process.env.PG_HOST,
-          port: 5432,
-          database: process.env.PG_DB,
-          user: process.env.PG_USER,
-          password: process.env.PG_PASSWORD,
+        store: Redis<Session>({
+          url: process.env.REDIS_URL || 'redis://localhost:6379',
         }),
         getSessionKey: (ctx) => {
           return `telegraf:${ctx.chat?.id ?? ctx.from?.id}`
@@ -40,6 +43,12 @@ export class Bot {
         defaultSession: (_ctx) => defaultSession,
       })
     )
+
+    this.agentService = new AgentService({
+      redis: redisClient,
+      model: createVeniceModel(),
+      tools: allTools,
+    })
 
     this.bot.use(async (ctx, _next) => {
       if (ctx.chat?.type !== 'private' && ctx.chat?.type !== 'group') {
@@ -149,7 +158,7 @@ export class Bot {
         (ctx.chatType === 'group' && ctx.isMention) ||
         ctx.chatType === 'private'
       ) {
-        await this.handleTextCompletion(ctx)
+        await this.handleAgentTextCompletion(ctx)
       }
     })
 
@@ -231,12 +240,12 @@ export class Bot {
       await ctx.answerInlineQuery([])
     })
 
-    // Enable graceful stop
     process.once('SIGINT', () => this.bot.stop('SIGINT'))
     process.once('SIGTERM', () => this.bot.stop('SIGTERM'))
   }
 
   async init() {
+    await this.agentService?.initialize()
     await this.bot.launch(() => {
       logger.info({ config: this.config }, 'Telegram bot is up and running')
     })
@@ -257,6 +266,7 @@ export class Bot {
         await ctx.reply(`Operation aborted`)
       },
       clear: async (ctx) => {
+        await this.agentService?.clearHistory(ctx.chat?.id?.toString() || '')
         ctx.session.textModelHistory = []
         ctx.session.codeModelHistory = []
         await ctx.reply(`Chat history deleted. Starting a new chat...`)
@@ -317,6 +327,28 @@ export class Bot {
     Object.entries(commands).forEach(([cmd, handler]) => {
       this.bot.command(cmd, handler)
     })
+  }
+
+  private async handleAgentTextCompletion(
+    ctx: ContextWithSession
+  ): Promise<void> {
+    const chatId = ctx.chat?.id?.toString()
+    if (!chatId || !this.agentService) {
+      return
+    }
+
+    await ctx.sendChatAction('typing')
+
+    try {
+      const response = await this.agentService.invoke(
+        chatId,
+        ctx.parsedMessageText || ''
+      )
+      await ctx.reply(response, { parse_mode: 'Markdown' })
+    } catch (error) {
+      logger.error({ error, chatId }, 'Agent completion error')
+      await ctx.reply('Sorry, I encountered an error. Please try again.')
+    }
   }
 
   private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
@@ -397,110 +429,84 @@ export class Bot {
     const completionText = completionResponse.choices?.[0].message.content
 
     if (ctx.chatType === 'private') {
-      if (!completionText) {
-        await ctx.reply(`Error: no response from model`)
-        return
-      }
-      const fullCompletion = `${fullMarkdown2TgMarkdown(completionText)}${formatWebCitations(completionResponse)}`
-      await ctx.reply(fullCompletion, {
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-      })
+      await ctx.sendMessage(
+        `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
+        { parse_mode: 'Markdown' }
+      )
+    } else if (ctx.chatType === 'group') {
+      await ctx.sendMessage(
+        `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
+        { reply_to_message_id: ctx.message?.message_id, parse_mode: 'Markdown' }
+      )
     }
-
-    if (ctx.chatType === 'group' && completionText && ctx.message) {
-      const fullCompletion = `${fullMarkdown2TgMarkdown(completionText)}${formatWebCitations(completionResponse)}`
-      await ctx.reply(fullCompletion, {
-        reply_parameters: { message_id: ctx.message.message_id },
-        parse_mode: 'Markdown',
-        link_preview_options: { is_disabled: true },
-      })
-    }
-  }
-
-  private addAndTruncateTextChatHistory(
-    ctx: ContextWithSession,
-    msgPart: ChatCompletionMessageParam
-  ): void {
-    ctx.session.textModelHistory.push(msgPart)
-    ctx.session.textModelHistory = ctx.session.textModelHistory.slice(
-      -this.config.telegram.maxSessionMessages
-    )
-  }
-
-  private addAndTruncateCodeChatHistory(
-    ctx: ContextWithSession,
-    msgPart: ChatCompletionMessageParam
-  ): void {
-    ctx.session.codeModelHistory.push(msgPart)
-    ctx.session.codeModelHistory = ctx.session.codeModelHistory.slice(
-      -this.config.telegram.maxSessionMessages
-    )
   }
 
   private getBaseChatHistory(
     ctx: ContextWithSession
   ): ChatCompletionMessageParam[] {
-    const messages: ChatCompletionMessageParam[] = []
-    const { privateChatSystemPrompt, groupChatSystemPrompt } = this.config.ia
+    const userName = ctx.from?.first_name ?? ctx.from?.username ?? 'User'
+    const isGroup = ctx.chatType === 'group'
+    const systemPrompt = isGroup
+      ? this.config.telegram.groupSystemPrompt(userName)
+      : this.config.telegram.privateSystemPrompt(userName)
 
-    if (ctx.chatType === 'private' && privateChatSystemPrompt) {
-      messages.push({
-        role: 'system',
-        content: privateChatSystemPrompt,
-      })
-    } else if (ctx.chatType === 'group' && groupChatSystemPrompt) {
-      messages.push({
-        role: 'system',
-        content: groupChatSystemPrompt,
-      })
+    return [{ role: 'system', content: systemPrompt }]
+  }
+
+  private addAndTruncateTextChatHistory(
+    ctx: ContextWithSession,
+    message: ChatCompletionMessageParam
+  ): void {
+    ctx.session.textModelHistory.push(message)
+    const maxLength = this.config.telegram.maxSessionMessages
+    if (ctx.session.textModelHistory.length > maxLength) {
+      ctx.session.textModelHistory =
+        ctx.session.textModelHistory.slice(-maxLength)
     }
-    return messages
+  }
+
+  private addAndTruncateCodeChatHistory(
+    ctx: ContextWithSession,
+    message: ChatCompletionMessageParam
+  ): void {
+    ctx.session.codeModelHistory.push(message)
+    const maxLength = this.config.telegram.maxSessionMessages
+    if (ctx.session.codeModelHistory.length > maxLength) {
+      ctx.session.codeModelHistory =
+        ctx.session.codeModelHistory.slice(-maxLength)
+    }
   }
 
   private getTruncatedChatHistory(
-    chatHistotry: ChatCompletionMessageParam[],
+    history: ChatCompletionMessageParam[],
     model: ModelData,
-    tokenCountOffset = 0
+    tokenOffset: number
   ): ChatCompletionMessageParam[] {
-    const output: ChatCompletionMessageParam[] = []
-    const reversedHistory = [...chatHistotry].reverse()
+    const maxTokens = model.model_spec.constraints.find(
+      (c) => c.name === 'max_context_length'
+    )?.value
 
-    let tokenCount = 0
-    let imageUrlAdded = false
-
-    for (const message of reversedHistory) {
-      let contentString = ''
-      if (typeof message.content === 'string') {
-        contentString = message.content
-      } else if (Array.isArray(message.content)) {
-        if (imageUrlAdded || !model.model_spec.capabilities?.supportsVision) {
-          continue
-        }
-        contentString = message.content
-          .map((m) =>
-            m.type === 'text'
-              ? m.text
-              : m.type === 'image_url'
-                ? m.image_url
-                : ''
-          )
-          .join(' ')
-        imageUrlAdded = true
-      }
-      tokenCount += countTokens(contentString)
-      if (
-        tokenCount <=
-        (model.model_spec.availableContextTokens ||
-          this.config.ia.defaultMaxTokens) +
-          tokenCountOffset
-      ) {
-        output.push(message)
-      }
+    if (!maxTokens) {
+      return history
     }
 
-    return output.reverse()
+    const availableTokens = maxTokens + tokenOffset
+    const result: ChatCompletionMessageParam[] = []
+    let currentTokens = 0
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const message = history[i]
+      const content = message.content?.toString() ?? ''
+      const tokens = countTokens(content)
+
+      if (currentTokens + tokens > availableTokens) {
+        break
+      }
+
+      currentTokens += tokens
+      result.unshift(message)
+    }
+
+    return result
   }
 }
-
-export default Bot
