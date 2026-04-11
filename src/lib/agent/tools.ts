@@ -22,7 +22,7 @@ export const calculatorTool = tool(
     try {
       const result = safeEvaluate(expression)
       return result.toString()
-    } catch (error) {
+    } catch {
       return `Error: Invalid expression. Only basic math operations (+, -, *, /, parentheses) are supported.`
     }
   },

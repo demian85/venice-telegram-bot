@@ -13,7 +13,7 @@ async function loadConfig(): Promise<Config> {
   try {
     const userConfig = await import('./bot.config')
     return { ...defaults.defaultConfig, ...userConfig.default }
-  } catch (err) {
+  } catch {
     return defaults.defaultConfig
   }
 }

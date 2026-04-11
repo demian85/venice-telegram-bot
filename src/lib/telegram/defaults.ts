@@ -43,7 +43,7 @@ const defaultTextModel: ModelData = {
   type: 'text',
 }
 
-const defaultImageModel: ModelData = {
+const _defaultImageModel: ModelData = {
   created: 1743099022,
   id: 'venice-sd35',
   model_spec: {
@@ -81,7 +81,7 @@ const defaultImageModel: ModelData = {
   type: 'image',
 }
 
-const defaultCodingModel: ModelData = {
+const _defaultCodingModel: ModelData = {
   created: 1740253117,
   id: 'deepseek-coder-v2-lite',
   model_spec: {
