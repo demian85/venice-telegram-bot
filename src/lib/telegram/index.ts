@@ -351,6 +351,12 @@ export class Bot {
 
   private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
     const model = ctx.session.config.model || ctx.session.config.textModel
+    if (!model) {
+      await ctx.reply(
+        'No model configured. Please use /config to select a model.'
+      )
+      return
+    }
     const messages = this.getBaseChatHistory(ctx)
     const systemPromptText = messages?.[0].content?.toString() ?? ''
     messages.push(
@@ -385,6 +391,12 @@ export class Bot {
 
   private async handleCodeCompletion(ctx: ContextWithSession): Promise<void> {
     const model = ctx.session.config.codingModel || ctx.session.config.model
+    if (!model) {
+      await ctx.reply(
+        'No model configured. Please use /config to select a model.'
+      )
+      return
+    }
     const messages = this.getBaseChatHistory(ctx)
     const systemPromptText = messages?.[0].content?.toString() ?? ''
     messages.push(
@@ -427,14 +439,14 @@ export class Bot {
     const completionText = completionResponse.choices?.[0].message.content
 
     if (ctx.chatType === 'private') {
-      await ctx.sendMessage(
+      await ctx.reply(
         `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
         { parse_mode: 'Markdown' }
       )
     } else if (ctx.chatType === 'group') {
-      await ctx.sendMessage(
+      await ctx.reply(
         `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
-        { reply_to_message_id: ctx.message?.message_id, parse_mode: 'Markdown' }
+        { parse_mode: 'Markdown' }
       )
     }
   }
@@ -445,8 +457,8 @@ export class Bot {
     const userName = ctx.from?.first_name ?? ctx.from?.username ?? 'User'
     const isGroup = ctx.chatType === 'group'
     const systemPrompt = isGroup
-      ? this.config.telegram.groupSystemPrompt(userName)
-      : this.config.telegram.privateSystemPrompt(userName)
+      ? this.config.ia.groupChatSystemPrompt.replace('', userName)
+      : this.config.ia.privateChatSystemPrompt.replace('', userName)
 
     return [{ role: 'system', content: systemPrompt }]
   }
@@ -480,9 +492,7 @@ export class Bot {
     model: ModelData,
     tokenOffset: number
   ): ChatCompletionMessageParam[] {
-    const maxTokens = model.model_spec.constraints.find(
-      (c) => c.name === 'max_context_length'
-    )?.value
+    const maxTokens = model.model_spec.availableContextTokens
 
     if (!maxTokens) {
       return history

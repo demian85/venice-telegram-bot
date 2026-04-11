@@ -35,7 +35,8 @@ export default {
       try {
         const availableModels = await listModels('text')
         if (!availableModels) {
-          return ctx.reply('No available models')
+          await ctx.reply('No available models')
+          return
         }
 
         ctx.session.availableModels = availableModels.data
@@ -52,7 +53,7 @@ export default {
       } catch (err) {
         const error = err as Error
         logger.error(error)
-        return ctx.reply(`Error loading models: ${error.message}`)
+        await ctx.reply(`Error loading models: ${error.message}`)
       }
     },
   ],
