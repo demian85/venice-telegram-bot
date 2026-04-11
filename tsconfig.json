@@ -7,7 +7,8 @@
     "paths": {
       "@lib/*": ["lib/*"]
     },
-    "typeRoots": ["src/typings"]
+    "typeRoots": ["src/typings"],
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "build"]

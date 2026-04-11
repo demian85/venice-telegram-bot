@@ -22,7 +22,10 @@ class VeniceApiError extends Error {
 export async function chatCompletion(
   inputParams: TextCompletionRequest
 ): Promise<TextCompletionResponse> {
-  return apiPOST('/chat/completions', inputParams)
+  return (await apiPOST(
+    '/chat/completions',
+    inputParams
+  )) as TextCompletionResponse
 }
 
 export async function generateImage(
@@ -55,7 +58,7 @@ async function apiPOST(path: string, body: unknown, qs?: string) {
 async function apiCall(
   path: string,
   method = 'GET',
-  body?: BodyInit,
+  body?: string | null | undefined,
   qs?: string
 ) {
   const url = new URL(join('/api/v1', path), 'https://api.venice.ai')
