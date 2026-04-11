@@ -27,17 +27,19 @@ export interface CurrentCommand {
 export interface Session {
   currentCommand: CurrentCommand | null
   config: {
-    textModel: ModelData
-    imageModel: ModelData
-    codingModel: ModelData
+    model?: ModelData
+    textModel?: ModelData
+    imageModel?: ModelData
+    codingModel?: ModelData
   }
   textModelHistory: ChatCompletionMessageParam[]
   codeModelHistory: ChatCompletionMessageParam[]
   availableModels: ModelData[]
 }
 
-export interface ContextWithSession<U extends Update = Update>
-  extends Context<U> {
+export interface ContextWithSession<
+  U extends Update = Update,
+> extends Context<U> {
   session: Session
   chatType: 'private' | 'group'
   isMention: boolean

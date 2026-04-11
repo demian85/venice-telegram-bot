@@ -127,9 +127,7 @@ const defaultCodingModel: ModelData = {
 export const defaultSession: Session = {
   currentCommand: null,
   config: {
-    textModel: defaultTextModel,
-    imageModel: defaultImageModel,
-    codingModel: defaultCodingModel,
+    model: defaultTextModel,
   },
   textModelHistory: [],
   codeModelHistory: [],

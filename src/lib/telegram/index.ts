@@ -283,11 +283,9 @@ export class Bot {
           ctx.session.currentCommand = null
           await ctx.reply(`Previous command aborted`)
         }
+        const model = ctx.session.config.model || ctx.session.config.textModel
         await ctx.reply(
-          `Current selected models are:
--*Text*: [${ctx.session.config.textModel.id}](${ctx.session.config.textModel.model_spec.modelSource})
--*Image*: [${ctx.session.config.imageModel.id}](${ctx.session.config.imageModel.model_spec.modelSource})
--*Code*: [${ctx.session.config.codingModel.id}](${ctx.session.config.codingModel.model_spec.modelSource})`.trim(),
+          `Current model: [${model?.id}](${model?.model_spec.modelSource})`.trim(),
           {
             parse_mode: 'Markdown',
             link_preview_options: { is_disabled: true },
@@ -352,7 +350,7 @@ export class Bot {
   }
 
   private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
-    const model = ctx.session.config.textModel
+    const model = ctx.session.config.model || ctx.session.config.textModel
     const messages = this.getBaseChatHistory(ctx)
     const systemPromptText = messages?.[0].content?.toString() ?? ''
     messages.push(
@@ -386,7 +384,7 @@ export class Bot {
   }
 
   private async handleCodeCompletion(ctx: ContextWithSession): Promise<void> {
-    const model = ctx.session.config.codingModel
+    const model = ctx.session.config.codingModel || ctx.session.config.model
     const messages = this.getBaseChatHistory(ctx)
     const systemPromptText = messages?.[0].content?.toString() ?? ''
     messages.push(

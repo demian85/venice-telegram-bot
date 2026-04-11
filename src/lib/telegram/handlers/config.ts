@@ -31,69 +31,32 @@ export default {
     // step = 0
     async (ctx: MessageContext) => {
       ctx.session.currentCommand = { id: 'config', step: 0 }
-      const keyboardButtons = [
-        {
-          text: 'Text Model',
-          callback_data: 'text_model',
-        },
-        {
-          text: 'Image Model',
-          callback_data: 'image_model',
-        },
-        {
-          text: 'Coding Model',
-          callback_data: 'coding_model',
-        },
-      ]
-      await ctx.reply(`Choose an option`, {
-        reply_markup: { inline_keyboard: [keyboardButtons] },
-      })
-    },
-  ],
-  callbackQuery: [
-    // step = 0
-    async (ctx: CallbackQueryContext) => {
-      const callbackValue = (ctx.callbackQuery as CallbackQuery.DataQuery).data
-
-      ctx.session.currentCommand!.step = 1
-      ctx.session.currentCommand!.subcommand = callbackValue
 
       try {
-        let availableModels
-        let selectedModelId
-
-        if (callbackValue === 'text_model') {
-          availableModels = await listModels('text')
-          selectedModelId = ctx.session.config.textModel.id
-        } else if (callbackValue === 'image_model') {
-          availableModels = await listModels('image')
-          selectedModelId = ctx.session.config.imageModel.id
-        } else if (callbackValue === 'coding_model') {
-          availableModels = await listModels('code')
-          selectedModelId = ctx.session.config.codingModel.id
-        }
-
+        const availableModels = await listModels('text')
         if (!availableModels) {
-          return callbackError(ctx, 'No available models')
+          return ctx.reply('No available models')
         }
 
         ctx.session.availableModels = availableModels.data
+        const selectedModelId = ctx.session.config.model?.id
 
-        await ctx.editMessageReplyMarkup({
-          inline_keyboard: buildModelKeyboardButtons(
-            availableModels.data,
-            selectedModelId
-          ),
+        await ctx.reply('Select your preferred model:', {
+          reply_markup: {
+            inline_keyboard: buildModelKeyboardButtons(
+              availableModels.data,
+              selectedModelId
+            ),
+          },
         })
-        await ctx.answerCbQuery()
       } catch (err) {
         const error = err as Error
         logger.error(error)
-        return callbackError(ctx, error.message)
+        return ctx.reply(`Error loading models: ${error.message}`)
       }
     },
-
-    // step = 1
+  ],
+  callbackQuery: [
     async (ctx: CallbackQueryContext) => {
       const callbackValue = (ctx.callbackQuery as CallbackQuery.DataQuery).data
       const selectedModel = ctx.session.availableModels.find((model) => {
@@ -104,40 +67,17 @@ export default {
         return callbackError(ctx, 'Invalid model selected')
       }
 
-      const selectedModelName = modelNameMappings[selectedModel.id]
+      const selectedModelName =
+        modelNameMappings[selectedModel.id] || selectedModel.id
       const emptyKeyboard = { inline_keyboard: [] }
 
-      switch (ctx.session.currentCommand?.subcommand) {
-        case 'text_model': {
-          ctx.session.config.textModel = selectedModel
-          await ctx.answerCbQuery('')
-          await ctx.editMessageText(
-            `The new text model is *${selectedModelName}*`,
-            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
-          )
-          return cancelCommand(ctx)
-        }
-        case 'image_model': {
-          ctx.session.config.imageModel = selectedModel
-          await ctx.answerCbQuery('')
-          await ctx.editMessageText(
-            `The new image model is *${selectedModelName}*`,
-            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
-          )
-          return cancelCommand(ctx)
-        }
-        case 'coding_model': {
-          ctx.session.config.codingModel = selectedModel
-          await ctx.answerCbQuery('')
-          await ctx.editMessageText(
-            `The new coding model is *${selectedModelName}*`,
-            { reply_markup: emptyKeyboard, parse_mode: 'Markdown' }
-          )
-          return cancelCommand(ctx)
-        }
-        default:
-          return callbackError(ctx)
-      }
+      ctx.session.config.model = selectedModel
+      await ctx.answerCbQuery('')
+      await ctx.editMessageText(`Model updated to *${selectedModelName}*`, {
+        reply_markup: emptyKeyboard,
+        parse_mode: 'Markdown',
+      })
+      return cancelCommand(ctx)
     },
   ],
 }

@@ -24,7 +24,10 @@ export async function generateImageHandler(
   try {
     await ctx.sendChatAction('upload_photo')
     const response = await generateImage({
-      model: ctx.session.config.imageModel.id,
+      model:
+        ctx.session.config.imageModel?.id ||
+        ctx.session.config.model?.id ||
+        'venice-sd35',
       prompt,
     })
     await ctx.replyWithPhoto({
