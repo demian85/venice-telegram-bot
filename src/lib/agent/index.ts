@@ -6,16 +6,20 @@ import {
   ConversationStore,
   type ConversationMessage,
 } from '../redis/conversation-store'
+import { MemoryManager } from '../memory/memory-manager'
+import type { MemoryConfig } from '../memory/types'
 
 export interface AgentServiceConfig {
   redis: Redis
   model: ChatOpenAI
   tools: StructuredTool[]
   systemPrompt?: string
+  memoryConfig?: Partial<MemoryConfig>
 }
 
 export class AgentService {
   private readonly store: ConversationStore
+  private readonly memoryManager: MemoryManager
   private readonly model: ChatOpenAI
   private readonly tools: StructuredTool[]
   private readonly systemPrompt: string
@@ -23,6 +27,11 @@ export class AgentService {
 
   constructor(config: AgentServiceConfig) {
     this.store = new ConversationStore(config.redis)
+    this.memoryManager = new MemoryManager(
+      config.redis,
+      config.model,
+      config.memoryConfig
+    )
     this.model = config.model
     this.tools = config.tools
     this.systemPrompt = config.systemPrompt || this.getDefaultSystemPrompt()
