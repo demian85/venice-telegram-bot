@@ -18,18 +18,13 @@ Copy `env.sample` to `.env` and fill in:
 
 ```
 TELEGRAM_BOT_TOKEN=        # From @BotFather
-VENICE_API_KEY=            # From venice.ai/settings/api
 REDIS_URL=redis://localhost:6379
-
-# Optional: News monitoring configuration
-NEWS_POLL_INTERVAL_MINUTES=5
-NEWS_RELEVANCE_THRESHOLD=70
-DEFAULT_FEEDS=https://planet-ai.net/rss.xml,https://news.ycombinator.com/rss
+LLM_API_KEY=               # From venice.ai/settings/api (or your provider)
 ```
 
 ### Optional bot config
 
-Copy `src/bot.config.ts.sample` to `src/bot.config.ts` and override defaults.
+Copy `config.sample.json` to `config.json` and override defaults. All non-secret configuration lives in JSON: model selections, system prompts, news feeds, polling intervals, and relevance thresholds.
 
 ### Redis
 
@@ -71,13 +66,13 @@ npx prettier --check .
 
 ### Three Model Roles
 
-The bot uses three distinct Venice AI model roles, each with a specific purpose:
+The bot uses three distinct LLM roles, each configurable via `config.defaults.json` / `config.json`:
 
-1. **Chat Model (A)** — `gpt-5.4-mini` — Primary conversational agent with vision support
-2. **Summarizer Model (B)** — `gpt-5.4-nano` — Memory summarization and context compression
-3. **News Relevance Model (C)** — `gpt-5.4-mini` — Article relevance scoring for news delivery
+1. **Chat Role** (`llm.roles.chat`) — Primary conversational agent. Configure `model`, `supportsVision`, and `systemPrompt`.
+2. **Summarizer Role** (`llm.roles.summarizer`) — Memory summarization and context compression. Configure `model`, `supportsVision`, and `systemPrompt`.
+3. **News Relevance Role** (`llm.roles.newsRelevance`) — Article relevance scoring for news delivery. Configure `model`, `supportsVision`, and `systemPrompt`.
 
-Role wiring is centralized in `src/lib/agent/model.ts` via `veniceRoleModelDefinitions` and `createVeniceRoleModels()`.
+Role wiring reads from `config.llm.roles` at runtime. Change models without code changes by editing `config.json`.
 
 ### Group Behavior and Privacy Mode
 
@@ -92,7 +87,7 @@ In private chats, every message invokes the agent directly.
 
 ### News Monitoring
 
-The bot polls configured RSS feeds every 5 minutes (configurable via `NEWS_POLL_INTERVAL_MINUTES`). Articles are scored for relevance using the news relevance model and forwarded to Telegram groups if they meet the threshold (default: 70/100).
+The bot polls configured RSS feeds every 5 minutes (configurable via `news.pollIntervalMinutes` in config). Articles are scored for relevance using the news relevance model and forwarded to Telegram groups if they meet the threshold (default: 70/100).
 
 Default feeds:
 

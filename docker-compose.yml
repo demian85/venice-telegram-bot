@@ -23,10 +23,9 @@ services:
       dockerfile: Dockerfile
     container_name: venice-bot-app
     environment:
-      - NODE_ENV=production
-      - REDIS_URL=redis://redis:6379
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - VENICE_API_KEY=${VENICE_API_KEY}
+      REDIS_URL: ${REDIS_URL?}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN?}
+      LLM_API_KEY: ${LLM_API_KEY?}
     env_file:
       - .env
     depends_on:

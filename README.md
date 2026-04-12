@@ -38,7 +38,8 @@ In groups, `/subscribe`, `/unsubscribe`, and `/interval` require admin privilege
 - Create a Venice API Key: https://venice.ai/settings/api
 - Create a Telegram bot: https://t.me/BotFather
 - Copy `env.sample` to `.env` and fill in the variables
-- Optional: Copy `src/bot.config.ts.sample` to `src/bot.config.ts` and override defaults
+- The bot ships with `config.defaults.json` as the canonical configuration baseline
+- Optional: Copy `config.sample.json` to `config.json` to override defaults (model selections, system prompts, news feeds, polling intervals)
 - `npm i`
 
 ### Development
