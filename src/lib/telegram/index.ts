@@ -22,6 +22,8 @@ import { formatTelegramMarkdownReply } from './util'
 export interface BotModels {
   agentModel: ChatOpenAI
   summarizerModel: ChatOpenAI
+  chatSystemPrompt: string
+  supportsVision: boolean
 }
 
 export interface BotNewsArticle {
@@ -133,7 +135,9 @@ export class Bot {
         redis: redisClient,
         agentModel: models.agentModel,
         summarizerModel: models.summarizerModel,
+        supportsVision: models.supportsVision,
         tools: allTools,
+        systemPrompt: models.chatSystemPrompt,
       })
     this.chatSubscriptionStore =
       dependencies.chatSubscriptionStore ??
@@ -596,7 +600,7 @@ export class Bot {
     )
 
     return [
-      'Venice Bot is ready.',
+      'The bot is ready.',
       this.getIngressSummary(ctx),
       this.getSubscriptionSummary(subscription),
       'Use /help for the operational command list.',

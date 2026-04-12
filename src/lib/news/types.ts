@@ -36,15 +36,9 @@ export interface NewsConfig {
   pollIntervalMinutes: number
   relevanceThreshold: number
   maxArticlesPerPoll: number
+  topics: string[]
 }
 
 export const defaultNewsIntervalSeconds = 300
 export const minNewsIntervalSeconds = 60
 export const maxNewsIntervalSeconds = 86400
-
-export const defaultNewsConfig: NewsConfig = {
-  feeds: ['https://planet-ai.net/rss.xml', 'https://news.ycombinator.com/rss'],
-  pollIntervalMinutes: 5,
-  relevanceThreshold: 70,
-  maxArticlesPerPoll: 10,
-}

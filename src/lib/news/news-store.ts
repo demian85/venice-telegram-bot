@@ -82,9 +82,8 @@ export class NewsStore {
       const item = await this.getItem(id)
       if (
         item &&
-        item.isRelevant &&
         !item.legacyBroadcastedAt &&
-        this.passesDeliveryThreshold(item, threshold)
+        this.passesThreshold(item, threshold)
       ) {
         items.push(item)
       }
@@ -99,11 +98,7 @@ export class NewsStore {
     for (const id of ids) {
       const item = await this.getItem(id)
 
-      if (
-        item &&
-        item.isRelevant &&
-        this.passesDeliveryThreshold(item, threshold)
-      ) {
+      if (item && this.passesThreshold(item, threshold)) {
         items.push(item)
       }
     }
@@ -152,10 +147,7 @@ export class NewsStore {
     }
   }
 
-  private passesDeliveryThreshold(item: NewsItem, threshold: number): boolean {
-    // Delivery-time thresholding is a second gate. Items still need
-    // `isRelevant === true`, which is assigned earlier by RelevanceDetector's
-    // hardcoded `score >= 70` rule.
+  private passesThreshold(item: NewsItem, threshold: number): boolean {
     return item.relevanceScore !== undefined && item.relevanceScore >= threshold
   }
 }

@@ -1,0 +1,93 @@
+{
+  "telegram": {
+    "botUsername": "",
+    "whitelistedUsers": []
+  },
+  "news": {
+    "feeds": [
+      "https://planet-ai.net/rss.xml",
+      "https://news.ycombinator.com/rss"
+    ],
+    "pollIntervalMinutes": 5,
+    "relevanceThreshold": 70,
+    "maxArticlesPerPoll": 10,
+    "topics": [
+      "AI",
+      "Artificial intelligence",
+      "Machine learning",
+      "LLM",
+      "Language model",
+      "GPT",
+      "Claude",
+      "Gemini",
+      "OpenAI",
+      "DeepSeek",
+      "Mistral",
+      "Neural network",
+      "Transformer",
+      "RAG",
+      "Vector database",
+      "AI agent",
+      "Autonomous agent",
+      "AI safety",
+      "Alignment",
+      "Prompt engineering",
+      "AI research",
+      "Open source AI",
+      "AI chips",
+      "GPU",
+      "TPU",
+      "NVIDIA",
+      "AMD",
+      "AI startup",
+      "Anthropic",
+      "OpenAI",
+      "Google DeepMind",
+      "Meta AI",
+      "xAI",
+      "Mistral AI",
+      "Cohere",
+      "Perplexity",
+      "Character.AI",
+      "AI summarization",
+      "Text-to-speech",
+      "Speech recognition",
+      "Computer vision",
+      "Image generation",
+      "Midjourney",
+      "DALL-E",
+      "Stable Diffusion",
+      "AI coding",
+      "Code generation",
+      "Copilot",
+      "Cursor",
+      "Devin",
+      "SWE-agent",
+      "AI ethics",
+      "EU AI Act",
+      "Alibaba"
+    ]
+  },
+  "llm": {
+    "apiKeyEnvVar": "LLM_API_KEY",
+    "baseUrl": "https://api.venice.ai/api/v1",
+    "defaultModel": "mistral-31-24b",
+    "roles": {
+      "chat": {
+        "model": "olafangensan-glm-4.7-flash-heretic",
+        "supportsVision": false,
+        "systemPrompt": "You are a helpful Telegram assistant. Reply clearly, concisely, and naturally."
+      },
+      "summarizer": {
+        "model": "qwen3-5-35b-a3b",
+        "supportsVision": true,
+        "systemPrompt": "Summarize conversations accurately and briefly. Keep key facts, decisions, and action items."
+      },
+      "newsRelevance": {
+        "model": "qwen3-5-35b-a3b",
+        "supportsVision": true,
+        "systemPrompt": "Judge whether a news item is relevant to AI and related technical topics. Be concise and consistent."
+      }
+    }
+  }
+}

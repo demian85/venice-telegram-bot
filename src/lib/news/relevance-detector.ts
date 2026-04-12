@@ -1,40 +1,23 @@
 import type { ChatOpenAI } from '@langchain/openai'
 import logger from '@lib/logger'
-import type { NewsItem } from './types'
-
-// Hard gate for relevance classification. This is independent of delivery-time
-// NEWS_RELEVANCE_THRESHOLD filtering in NewsStore/NewsScheduler.
-const relevanceScoreThreshold = 70
+import type { NewsConfig, NewsItem } from './types'
 
 export class RelevanceDetector {
   private readonly model: ChatOpenAI
+  private readonly topics: NewsConfig['topics']
+  private readonly relevanceThreshold: NewsConfig['relevanceThreshold']
 
-  constructor(model: ChatOpenAI) {
+  constructor(
+    model: ChatOpenAI,
+    config: Pick<NewsConfig, 'topics' | 'relevanceThreshold'>
+  ) {
     this.model = model
+    this.topics = config.topics
+    this.relevanceThreshold = config.relevanceThreshold
   }
 
   async detectRelevance(
-    item: NewsItem,
-    topics: string[] = [
-      'AI',
-      'Artificial intelligence',
-      'Machine learning',
-      'LLM',
-      'Neural networks',
-      'OpenAI',
-      'Anthropic',
-      'Claude',
-      'GPT',
-      'Meta',
-      'Minimax',
-      'z.ai',
-      'Kimi',
-      'GLM',
-      'OpenClaw',
-      'Opencode',
-      'Deepseek',
-      'Alibaba',
-    ]
+    item: NewsItem
   ): Promise<{ score: number; isRelevant: boolean }> {
     const content =
       `${item.title}\n${item.description || ''}\n${item.content || ''}`.slice(
@@ -42,16 +25,16 @@ export class RelevanceDetector {
         2000
       )
 
-    const prompt = `Analyze this article and rate its relevance to AI/artificial intelligence topics on a scale of 0-100.
+    const prompt = `Analyze this article and rate its relevance to the following topics on a scale of 0-100.
 
 Article: ${content}
 
-Topics of interest: ${topics.join(', ')}
+Topics of interest: ${this.topics.join(', ')}
 
 Respond with ONLY a number between 0-100, where:
-- 80-100: Highly relevant (directly about AI breakthroughs, new models, industry news)
-- 60-79: Moderately relevant (mentions AI in passing, related tech news)
-- 0-59: Not relevant (unrelated topics)
+- 80-100: Highly relevant (directly covers these topics)
+- 60-79: Somewhat relevant (mentions these topics in passing)
+- 0-59: Not relevant (unrelated to these topics)
 
 Score:`
 
@@ -65,7 +48,7 @@ Score:`
       const score = match
         ? Math.min(100, Math.max(0, parseInt(match[0], 10)))
         : 50
-      const isRelevant = score >= relevanceScoreThreshold
+      const isRelevant = score >= this.relevanceThreshold
 
       logger.debug({
         event: 'news.score.result',
@@ -73,7 +56,7 @@ Score:`
         itemTitle: item.title,
         score,
         isRelevant,
-        threshold: relevanceScoreThreshold,
+        threshold: this.relevanceThreshold,
       })
 
       return {
@@ -85,7 +68,7 @@ Score:`
         event: 'news.score.error',
         itemId: item.id,
         itemTitle: item.title,
-        threshold: relevanceScoreThreshold,
+        threshold: this.relevanceThreshold,
         err: error,
       })
 
@@ -101,7 +84,8 @@ Score:`
     logger.debug({
       event: 'news.score.start',
       unscoredCount: items.length,
-      threshold: relevanceScoreThreshold,
+      threshold: this.relevanceThreshold,
+      topicCount: this.topics.length,
     })
 
     await Promise.all(

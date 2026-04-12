@@ -93,7 +93,11 @@ export class NewsScheduler {
     this.feedReader = dependencies.feedReader ?? new FeedReader()
     this.newsStore = dependencies.newsStore ?? new NewsStore(config.redis)
     this.relevanceDetector =
-      dependencies.relevanceDetector ?? new RelevanceDetector(config.model)
+      dependencies.relevanceDetector ??
+      new RelevanceDetector(config.model, {
+        topics: config.newsConfig.topics,
+        relevanceThreshold: config.newsConfig.relevanceThreshold,
+      })
     this.chatSubscriptionStore =
       dependencies.chatSubscriptionStore ??
       new ChatSubscriptionStore(config.redis)

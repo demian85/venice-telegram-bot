@@ -11,7 +11,6 @@ export type {
   NewsItem,
 } from './types'
 export {
-  defaultNewsConfig,
   defaultNewsIntervalSeconds,
   maxNewsIntervalSeconds,
   minNewsIntervalSeconds,

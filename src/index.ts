@@ -2,52 +2,33 @@ import 'dotenv/config'
 
 import { Bot } from '@lib/telegram'
 import logger from '@lib/logger'
-import { Config } from '@lib/types'
+import { loadAppConfig } from '@lib/config/load-config'
+import type { AppConfig } from '@lib/config/types'
 import { getRedisClient, closeRedisClient } from '@lib/redis'
 import { NewsScheduler } from '@lib/news'
-import { createVeniceRoleModels } from '@lib/agent/model'
-import { defaultNewsConfig } from '@lib/news/types'
-
-async function loadConfig(): Promise<Config> {
-  const defaults = await import('./lib/telegram/defaults')
-  try {
-    const userConfig = await import('./bot.config')
-    return { ...defaults.defaultConfig, ...userConfig.default }
-  } catch {
-    return defaults.defaultConfig
-  }
-}
+import { createLlmRoleModels, llmSupportsVision } from '@lib/llm/model'
 
 async function main() {
-  const config = await loadConfig()
+  const config: AppConfig = loadAppConfig()
   const redis = getRedisClient()
-  const models = createVeniceRoleModels()
 
-  const bot = new Bot(config, {
-    agentModel: models.chat,
-    summarizerModel: models.summarizer,
-  })
+  const models = createLlmRoleModels(config)
+
+  const bot = new Bot(
+    { telegram: config.telegram },
+    {
+      agentModel: models.chat,
+      summarizerModel: models.summarizer,
+      chatSystemPrompt: config.llm.roles.chat.systemPrompt,
+      supportsVision: llmSupportsVision('chat', config),
+    }
+  )
   await bot.init()
-
-  const newsFeeds = process.env.DEFAULT_FEEDS
-    ? process.env.DEFAULT_FEEDS.split(',').map((f) => f.trim())
-    : defaultNewsConfig.feeds
 
   const newsScheduler = new NewsScheduler({
     redis,
     model: models.newsRelevance,
-    newsConfig: {
-      ...defaultNewsConfig,
-      feeds: newsFeeds,
-      pollIntervalMinutes: parseInt(
-        process.env.NEWS_POLL_INTERVAL_MINUTES || '5',
-        10
-      ),
-      relevanceThreshold: parseInt(
-        process.env.NEWS_RELEVANCE_THRESHOLD || '70',
-        10
-      ),
-    },
+    newsConfig: config.news,
     onDeliverArticle: async ({ chatId, article }) => {
       await bot.sendNewsArticle(chatId, article)
       logger.info({ chatId, article }, 'Relevant article delivered')

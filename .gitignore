@@ -46,3 +46,4 @@ build
 .DS_Store
 bot.config.ts
 .sisyphus
+config.json
