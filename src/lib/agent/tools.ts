@@ -43,7 +43,7 @@ export const calculatorTool = tool(
 export const helpTool = tool(
   async ({ topic }) => {
     const generalHelp = `
-I am a Venice AI-powered Telegram bot. Here's what I can do:
+I am an AI-powered Telegram bot. Here's what I can do:
 
 **General Chat:**
 - Talk to me in private chats, or mention me in groups to get a reply

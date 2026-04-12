@@ -96,7 +96,6 @@ Summary:`
       'solution',
       'telegram',
       'bot',
-      'venice',
       'api',
     ]
 

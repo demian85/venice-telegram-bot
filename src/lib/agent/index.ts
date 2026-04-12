@@ -6,7 +6,6 @@ import type { Redis } from 'ioredis'
 import type { ConversationMessage } from '../redis/conversation-store'
 import { MemoryManager } from '../memory/memory-manager'
 import type { MemoryConfig } from '../memory/types'
-import { modelSupportsVision } from './model'
 import {
   buildLiveUserContent,
   buildPersistedTextShadow,
@@ -18,6 +17,7 @@ export interface AgentServiceConfig {
   redis: Redis
   agentModel: ChatOpenAI
   summarizerModel: ChatOpenAI
+  supportsVision: boolean
   tools: StructuredTool[]
   systemPrompt?: string
   memoryConfig?: Partial<MemoryConfig>
@@ -38,7 +38,7 @@ export class AgentService {
       config.memoryConfig
     )
     this.model = config.agentModel
-    this.supportsVision = modelSupportsVision(config.agentModel)
+    this.supportsVision = config.supportsVision
     this.tools = config.tools
     this.systemPrompt = config.systemPrompt || this.getDefaultSystemPrompt()
   }
@@ -194,7 +194,7 @@ export class AgentService {
   }
 
   private getDefaultSystemPrompt(): string {
-    return `You are a helpful AI assistant powered by Venice AI. You have access to tools that can help answer questions and perform tasks.
+    return `You are a helpful AI assistant. You have access to tools that can help answer questions and perform tasks.
 
 When using tools:
 - Always use the calculator for mathematical calculations

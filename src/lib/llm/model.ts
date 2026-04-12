@@ -1,0 +1,49 @@
+import { ChatOpenAI } from '@langchain/openai'
+
+import type { AppConfig, LlmRole } from '@lib/config/types'
+
+export type LlmRoleModels = Record<LlmRole, ChatOpenAI>
+
+export function createLlmRoleModels(config: AppConfig): LlmRoleModels {
+  const apiKey = process.env[config.llm.apiKeyEnvVar]
+
+  if (!apiKey) {
+    throw new Error(
+      `${config.llm.apiKeyEnvVar} environment variable is required`
+    )
+  }
+
+  return {
+    chat: createLlmModel(config.llm.roles.chat, apiKey, config.llm.baseUrl),
+    summarizer: createLlmModel(
+      config.llm.roles.summarizer,
+      apiKey,
+      config.llm.baseUrl
+    ),
+    newsRelevance: createLlmModel(
+      config.llm.roles.newsRelevance,
+      apiKey,
+      config.llm.baseUrl
+    ),
+  }
+}
+
+function createLlmModel(
+  roleConfig: AppConfig['llm']['roles'][LlmRole],
+  apiKey: string,
+  baseUrl: string
+): ChatOpenAI {
+  return new ChatOpenAI({
+    modelName: roleConfig.model,
+    apiKey,
+    configuration: { baseURL: baseUrl },
+  })
+}
+
+export function llmSupportsVision(role: LlmRole, config: AppConfig): boolean {
+  return config.llm.roles[role].supportsVision
+}
+
+export function getLlmModelForRole(role: LlmRole, config: AppConfig): string {
+  return config.llm.roles[role].model
+}
