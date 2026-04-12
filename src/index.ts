@@ -55,8 +55,13 @@ async function main() {
     }
   )
 
-  await newsScheduler.start()
-  logger.info('News scheduler started')
+  try {
+    await newsScheduler.start()
+    logger.info('News scheduler started successfully')
+  } catch (err) {
+    logger.error({ err }, 'Failed to start news scheduler')
+    throw err
+  }
 
   process.once('SIGINT', async () => {
     logger.info('Shutting down...')

@@ -306,6 +306,39 @@ export class Bot {
       info: async (ctx) => {
         await ctx.reply(await this.buildInfoMessage(ctx))
       },
+      debugnews: async (ctx) => {
+        if (!this.newsQueryService) {
+          await ctx.reply('News service not configured')
+          return
+        }
+        try {
+          await ctx.sendChatAction('typing')
+          const raw = await this.newsQueryService.getRecentNewsRaw(10)
+          const lines = [
+            `*Debug News Info*`,
+            ``,
+            `Total articles in store: ${raw.length}`,
+            ``,
+          ]
+          if (raw.length > 0) {
+            lines.push(`Latest articles (no filter):`)
+            raw.slice(0, 5).forEach((a, i) => {
+              lines.push(`${i + 1}. ${a.title}`)
+              lines.push(
+                `   Score: ${a.relevanceScore ?? 'unscored'} | Source: ${a.source}`
+              )
+            })
+          } else {
+            lines.push(
+              `No articles found. The news scheduler may not be running or feeds are empty.`
+            )
+          }
+          await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
+        } catch (error) {
+          logger.error({ error }, 'Debug news command failed')
+          await ctx.reply('Error: ' + String(error))
+        }
+      },
       news: async (ctx) => {
         if (!this.newsQueryService) {
           await ctx.reply(
