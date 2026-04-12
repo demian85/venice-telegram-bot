@@ -1,7 +1,7 @@
 import logger from 'pino'
 
 const loggerOptions = {
-  name: 'food-genius',
+  name: 'venice-assistant-bot',
   level: process.env.LOG_LEVEL || 'info',
   serializers: {
     err: logger.stdSerializers.err,

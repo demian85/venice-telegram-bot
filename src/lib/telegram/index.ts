@@ -339,7 +339,7 @@ export class Bot {
           }
 
           const lines = [
-            `*Recent AI News (${articles.length} article${articles.length === 1 ? '' : 's'})*`,
+            `*📰 Recent AI News (${articles.length} article${articles.length === 1 ? '' : 's'})*`,
             '',
           ]
 
@@ -352,26 +352,24 @@ export class Bot {
               }
             )
 
-            lines.push(`${index + 1}. *${this.escapeMarkdown(article.title)}*`)
-            lines.push(
-              `   Source: ${this.escapeMarkdown(article.source)} | ${publishedStr}`
-            )
+            lines.push(`*${index + 1}. ${article.title}*`)
+            lines.push(`📰 Source: ${article.source} | 📅 ${publishedStr}`)
             if (article.description) {
               const desc =
-                article.description.slice(0, 100) +
-                (article.description.length > 100 ? '...' : '')
-              lines.push(`   ${this.escapeMarkdown(desc)}`)
+                article.description.slice(0, 200) +
+                (article.description.length > 200 ? '...' : '')
+              lines.push(`${desc}`)
             }
-            lines.push(`   [Read more](${article.url})`)
+            lines.push(`🔗 [Read full article](${article.url})`)
             if (article.relevanceScore !== undefined) {
-              lines.push(`   Relevance: ${article.relevanceScore}/100`)
+              lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
             }
             lines.push('')
           })
 
           await ctx.reply(lines.join('\n'), {
             parse_mode: 'Markdown',
-            link_preview_options: { is_disabled: false },
+            link_preview_options: { is_disabled: true },
           })
         } catch (error) {
           logger.error(

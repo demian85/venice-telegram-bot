@@ -50,3 +50,48 @@ In groups, `/subscribe`, `/unsubscribe`, and `/interval` require admin privilege
 ### Docker
 
 - `docker compose up`
+
+## News System
+
+The bot automatically collects and delivers AI/tech news from RSS feeds.
+
+### News Storage
+
+News articles are stored in **Redis** with the following structure:
+
+- **Storage location**: Redis keys with pattern `news:item:{article_id}`
+- **Sorted index**: Redis sorted set `news:items` ordered by fetch timestamp
+- **Data retention**: Articles expire after **7 days** (TTL = 604800 seconds)
+- **No limit on item count**: All articles from the last 7 days are retained
+
+### Default News Feeds
+
+- Planet AI (`https://planet-ai.net/rss.xml`) - Aggregates 30+ AI sources
+- Hacker News (`https://news.ycombinator.com/rss`) - Community-curated tech
+
+### How News Works
+
+1. **Collection**: Every 5 minutes (configurable), the bot polls all configured RSS feeds
+2. **Relevance scoring**: Each article is scored 0-100 by an LLM for relevance to AI/tech topics
+3. **Storage**: Articles scoring above the threshold (default: 70/100) are stored in Redis
+4. **Delivery**: Subscribed chats receive relevant articles automatically based on their configured interval
+5. **Manual access**: Users can request recent news via `/news [count]` command or by asking the bot
+
+### News Article Format
+
+Each stored article contains:
+
+- `id` - Unique identifier (URL hash)
+- `title` - Article headline
+- `source` - Feed name
+- `url` - Link to original article
+- `description` - Article excerpt/summary
+- `publishedAt` - Original publication date
+- `fetchedAt` - When the bot collected the article
+- `relevanceScore` - 0-100 relevance rating
+
+### Per-Chat Controls
+
+- `/subscribe` - Enable automatic news delivery to this chat
+- `/unsubscribe` - Disable automatic news delivery
+- `/interval [seconds]` - Set delivery cadence (60-86400 seconds, default: 300)

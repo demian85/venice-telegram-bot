@@ -35,7 +35,7 @@ async function main() {
     }
   )
 
-  const tools = createAgentTools({ newsQueryService })
+  const _tools = createAgentTools({ newsQueryService })
 
   await bot.init()
 
