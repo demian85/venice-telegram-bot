@@ -1,5 +1,5 @@
 import { Context } from 'telegraf'
-import { Update } from 'telegraf/typings/core/types/typegram'
+import type { Update } from 'telegraf/types'
 
 export type TelegramChatScopeType = 'private' | 'group'
 

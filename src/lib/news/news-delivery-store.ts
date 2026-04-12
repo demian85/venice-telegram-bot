@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis'
-import type { NewsDeliveryRecord } from './types'
+import type { NewsDeliveryRecord } from './types.js'
 
 export class NewsDeliveryStore {
   private readonly keyPrefix = 'news:chat-delivery:'

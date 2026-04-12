@@ -2,12 +2,16 @@
   "name": "venice-telegram-bot",
   "version": "1.3.0",
   "description": "Telegram bot with AI assistance and news delivery",
-  "main": "index.js",
+  "type": "module",
+  "main": "build/index.js",
+  "exports": {
+    ".": "./build/index.js"
+  },
   "scripts": {
     "test": "jest",
     "build": "tsc && resolve-tspaths",
-    "start": "node build/index.js | pino-pretty --minimumLevel ${LOG_LEVEL:-info}",
-    "start:dev": "tsx -r tsconfig-paths/register src/index.ts | pino-pretty --minimumLevel ${LOG_LEVEL:-info}",
+    "start": "node build/index.js | pino-pretty",
+    "start:dev": "tsx watch src/index.ts | pino-pretty",
     "tscheck": "tsc --noEmit --pretty",
     "tscheck:watch": "npm run tscheck -- --watch",
     "lint": "eslint .",
@@ -40,7 +44,6 @@
     "prettier": "^3.5.3",
     "resolve-tspaths": "^0.8.16",
     "tsx": "^4.20.6",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1"
   },
@@ -49,6 +52,7 @@
     "@langchain/core": "^1.1.39",
     "@langchain/openai": "^1.4.4",
     "@telegraf/session": "^2.0.0-beta.7",
+    "@telegraf/types": "^9.2.1",
     "bullmq": "^5.73.4",
     "dotenv": "^16.3.1",
     "gpt-tokenizer": "^2.9.0",

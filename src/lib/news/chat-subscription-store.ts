@@ -4,7 +4,7 @@ import {
   maxNewsIntervalSeconds,
   minNewsIntervalSeconds,
   type NewsChatSubscription,
-} from './types'
+} from './types.js'
 
 export class ChatSubscriptionStore {
   private readonly keyPrefix = 'news:chat-subscription:'

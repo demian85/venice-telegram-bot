@@ -1,6 +1,6 @@
 import type { Redis } from 'ioredis'
-import logger from '@lib/logger'
-import type { NewsItem } from './types'
+import logger from '@lib/logger.js'
+import type { NewsItem } from './types.js'
 
 export class NewsStore {
   private readonly redis: Redis

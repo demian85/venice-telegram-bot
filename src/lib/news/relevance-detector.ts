@@ -1,6 +1,6 @@
 import type { ChatOpenAI } from '@langchain/openai'
-import logger from '@lib/logger'
-import type { NewsConfig, NewsItem } from './types'
+import logger from '@lib/logger.js'
+import type { NewsConfig, NewsItem } from './types.js'
 
 export class RelevanceDetector {
   private readonly model: ChatOpenAI

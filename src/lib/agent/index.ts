@@ -3,15 +3,15 @@ import { ChatOpenAI } from '@langchain/openai'
 import type { MessageContent } from '@langchain/core/messages'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { Redis } from 'ioredis'
-import type { ConversationMessage } from '../redis/conversation-store'
-import { MemoryManager } from '../memory/memory-manager'
-import type { MemoryConfig } from '../memory/types'
+import type { ConversationMessage } from '../redis/conversation-store.js'
+import { MemoryManager } from '../memory/memory-manager.js'
+import type { MemoryConfig } from '../memory/types.js'
 import {
   buildLiveUserContent,
   buildPersistedTextShadow,
   extractTextContent,
   type AgentLiveInvocationInput,
-} from './content'
+} from './content.js'
 
 export interface AgentServiceConfig {
   redis: Redis

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import type { AppConfig, LlmRoleConfig } from '@lib/config/types'
+import type { AppConfig, LlmRoleConfig } from '@lib/config/types.js'
 
 type LoadAppConfigOptions = {
   rootDir?: string

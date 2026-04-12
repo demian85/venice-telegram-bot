@@ -1,13 +1,13 @@
 import { Queue, Worker } from 'bullmq'
 import type { Redis } from 'ioredis'
-import type { NewsConfig } from './types'
-import { FeedReader } from './feed-reader'
-import { NewsStore } from './news-store'
-import { RelevanceDetector } from './relevance-detector'
-import { ChatSubscriptionStore } from './chat-subscription-store'
-import { NewsDeliveryStore } from './news-delivery-store'
+import type { NewsConfig } from './types.js'
+import { FeedReader } from './feed-reader.js'
+import { NewsStore } from './news-store.js'
+import { RelevanceDetector } from './relevance-detector.js'
+import { ChatSubscriptionStore } from './chat-subscription-store.js'
+import { NewsDeliveryStore } from './news-delivery-store.js'
 import type { ChatOpenAI } from '@langchain/openai'
-import logger from '@lib/logger'
+import logger from '@lib/logger.js'
 
 const deliveryIntervalMs = 60 * 1000
 const startupJobRegistrations = [

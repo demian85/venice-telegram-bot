@@ -1,4 +1,4 @@
-import { Config } from '@lib/types'
+import { Config } from '@lib/types.js'
 
 export const defaultConfig: Config = {
   telegram: {

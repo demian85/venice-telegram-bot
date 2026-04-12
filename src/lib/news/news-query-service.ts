@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis'
-import type { NewsItem } from './types'
+import type { NewsItem } from './types.js'
 
 export interface RecentNewsItem {
   id: string

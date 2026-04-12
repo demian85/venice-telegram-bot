@@ -1,13 +1,14 @@
 {
-  "extends": "./tsconfig.base.json",
+  "extends": "@tsconfig/node24/tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./build",
     "baseUrl": "./src",
     "paths": {
-      "@lib/*": ["lib/*"]
+      "@lib/*": ["./lib/*"]
     },
-    "typeRoots": ["src/typings"],
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],

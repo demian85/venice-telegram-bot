@@ -1,7 +1,7 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { StructuredTool } from '@langchain/core/tools'
-import type { NewsQueryService } from '@lib/news'
+import type { NewsQueryService } from '@lib/news/index.js'
 
 function safeEvaluate(expression: string): number {
   const sanitized = expression.replace(/[^0-9+\-*/.()\s]/g, '')

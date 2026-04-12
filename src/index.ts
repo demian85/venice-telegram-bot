@@ -1,13 +1,13 @@
 import 'dotenv/config'
 
-import { Bot } from '@lib/telegram'
-import logger from '@lib/logger'
-import { loadAppConfig } from '@lib/config/load-config'
-import type { AppConfig } from '@lib/config/types'
-import { getRedisClient, closeRedisClient } from '@lib/redis'
-import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news'
-import { createAgentTools } from '@lib/agent/tools'
-import { createLlmRoleModels, llmSupportsVision } from '@lib/llm/model'
+import { Bot } from '@lib/telegram/index.js'
+import logger from '@lib/logger.js'
+import { loadAppConfig } from '@lib/config/load-config.js'
+import type { AppConfig } from '@lib/config/types.js'
+import { getRedisClient, closeRedisClient } from '@lib/redis/index.js'
+import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news/index.js'
+import { createAgentTools } from '@lib/agent/tools.js'
+import { createLlmRoleModels, llmSupportsVision } from '@lib/llm/model.js'
 
 async function main() {
   const config: AppConfig = loadAppConfig()

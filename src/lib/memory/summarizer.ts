@@ -1,6 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai'
-import type { ConversationMessage } from '../redis/conversation-store'
-import type { MemorySummary } from './types'
+import type { ConversationMessage } from '../redis/conversation-store.js'
+import type { MemorySummary } from './types.js'
 
 export class Summarizer {
   private readonly model: ChatOpenAI

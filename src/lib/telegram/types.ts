@@ -1,5 +1,5 @@
 import { Context, NarrowedContext } from 'telegraf'
-import { Message, Update } from 'telegraf/typings/core/types/typegram'
+import type { Message, Update, MessageEntity } from 'telegraf/types'
 
 export type MessageContext = NarrowedContext<
   TelegramContext<Update>,
@@ -17,3 +17,5 @@ export interface TelegramContext<U extends Update = Update> extends Context<U> {
   isMention: boolean
   parsedMessageText?: string
 }
+
+export type { Message, Update, MessageEntity }

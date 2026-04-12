@@ -1,6 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai'
 
-import type { AppConfig, LlmRole } from '@lib/config/types'
+import type { AppConfig, LlmRole } from '@lib/config/types.js'
 
 export type LlmRoleModels = Record<LlmRole, ChatOpenAI>
 

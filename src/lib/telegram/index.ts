@@ -1,11 +1,10 @@
 import { Telegraf } from 'telegraf'
 import { message } from 'telegraf/filters'
-import type { MessageEntity } from 'telegraf/typings/core/types/typegram'
 import type { ChatOpenAI } from '@langchain/openai'
 import type { Redis } from 'ioredis'
-import logger from '@lib/logger'
-import { AgentService } from '@lib/agent'
-import { allTools } from '@lib/agent/tools'
+import logger from '@lib/logger.js'
+import { AgentService } from '@lib/agent/index.js'
+import { allTools } from '@lib/agent/tools.js'
 import {
   ChatSubscriptionStore,
   defaultNewsIntervalSeconds,
@@ -13,12 +12,17 @@ import {
   minNewsIntervalSeconds,
   type NewsChatSubscription,
   NewsQueryService,
-} from '@lib/news'
-import { getRedisClient } from '@lib/redis'
-import { getContextChatScope } from './scope'
-import { MessageContext, PhotoMessageContext, TelegramContext } from './types'
-import { Config } from '@lib/types'
-import { formatTelegramMarkdownReply } from './util'
+} from '@lib/news/index.js'
+import { getRedisClient } from '@lib/redis/index.js'
+import { getContextChatScope } from './scope.js'
+import {
+  MessageContext,
+  PhotoMessageContext,
+  TelegramContext,
+  type MessageEntity,
+} from './types.js'
+import { Config } from '@lib/types.js'
+import { formatTelegramMarkdownReply } from './util.js'
 
 export interface BotModels {
   agentModel: ChatOpenAI

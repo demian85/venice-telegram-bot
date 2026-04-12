@@ -1,6 +1,6 @@
 import { extract } from '@extractus/feed-extractor'
-import logger from '@lib/logger'
-import type { NewsItem } from './types'
+import logger from '@lib/logger.js'
+import type { NewsItem } from './types.js'
 
 export interface FeedEntry {
   title?: string

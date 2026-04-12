@@ -2,11 +2,15 @@ import type { Redis } from 'ioredis'
 import {
   ConversationStore,
   type ConversationMessage,
-} from '../redis/conversation-store'
-import { SummaryStore } from './summary-store'
-import { Summarizer } from './summarizer'
-import type { MemoryConfig, MemorySummary, HierarchicalContext } from './types'
-import { defaultMemoryConfig } from './types'
+} from '../redis/conversation-store.js'
+import { SummaryStore } from './summary-store.js'
+import { Summarizer } from './summarizer.js'
+import type {
+  MemoryConfig,
+  MemorySummary,
+  HierarchicalContext,
+} from './types.js'
+import { defaultMemoryConfig } from './types.js'
 import type { ChatOpenAI } from '@langchain/openai'
 
 export class MemoryManager {

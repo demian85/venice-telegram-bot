@@ -1,5 +1,5 @@
 export {
   ConversationStore,
   type ConversationMessage,
-} from './conversation-store'
-export { getRedisClient, closeRedisClient } from './client'
+} from './conversation-store.js'
+export { getRedisClient, closeRedisClient } from './client.js'

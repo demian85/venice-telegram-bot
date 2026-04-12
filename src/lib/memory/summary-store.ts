@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis'
-import type { MemorySummary } from './types'
+import type { MemorySummary } from './types.js'
 
 export class SummaryStore {
   private readonly redis: Redis
