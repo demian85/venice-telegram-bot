@@ -2,9 +2,9 @@ import { Telegraf } from 'telegraf'
 import { message } from 'telegraf/filters'
 import type { ChatOpenAI } from '@langchain/openai'
 import type { Redis } from 'ioredis'
+import type { StructuredTool } from '@langchain/core/tools'
 import logger from '@lib/logger.js'
 import { AgentService } from '@lib/agent/index.js'
-import { allTools } from '@lib/agent/tools.js'
 import {
   ChatSubscriptionStore,
   defaultNewsIntervalSeconds,
@@ -79,6 +79,7 @@ export interface BotDependencies {
   agentService?: AgentService
   chatSubscriptionStore?: ChatSubscriptionStore
   newsQueryService?: NewsQueryService
+  tools?: StructuredTool[]
 }
 
 export class Bot {
@@ -147,7 +148,7 @@ export class Bot {
         agentModel: models.agentModel,
         summarizerModel: models.summarizerModel,
         supportsVision: models.supportsVision,
-        tools: allTools,
+        tools: dependencies.tools ?? [],
         systemPrompt: models.chatSystemPrompt,
       })
     this.chatSubscriptionStore =

@@ -21,6 +21,8 @@ async function main() {
     relevanceThreshold: config.news.relevanceThreshold,
   })
 
+  const tools = createAgentTools({ newsQueryService })
+
   const bot = new Bot(
     { telegram: config.telegram },
     {
@@ -32,10 +34,9 @@ async function main() {
     {
       redis,
       newsQueryService,
+      tools,
     }
   )
-
-  const _tools = createAgentTools({ newsQueryService })
 
   await bot.init()
 
