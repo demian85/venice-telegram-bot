@@ -1,6 +1,24 @@
+import { z } from 'zod'
 import type { ChatOpenAI } from '@langchain/openai'
 import logger from '@lib/logger.js'
 import type { NewsConfig, NewsItem } from './types.js'
+
+const RelevanceScoreSchema = z.object({
+  score: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .describe(
+      'Relevance score from 0-100 where 80-100 is highly relevant, 60-79 somewhat relevant, 0-59 not relevant'
+    ),
+  reasoning: z
+    .string()
+    .optional()
+    .describe('Brief explanation of why this score was given'),
+})
+
+type RelevanceScore = z.infer<typeof RelevanceScoreSchema>
 
 export class RelevanceDetector {
   private readonly model: ChatOpenAI
@@ -25,35 +43,28 @@ export class RelevanceDetector {
         2000
       )
 
-    const prompt = `Analyze this article and rate its relevance to the following topics on a scale of 0-100.
+    const prompt = `Analyze this article and rate its relevance to AI and technology topics on a scale of 0-100.
 
 Article: ${content}
 
 Topics of interest: ${this.topics.join(', ')}
 
-Respond with ONLY a number between 0-100, where:
-- 80-100: Highly relevant (directly covers these topics)
-- 60-79: Somewhat relevant (mentions these topics in passing)
-- 0-59: Not relevant (unrelated to these topics)
-
-Score:`
+Scoring guidelines:
+- 80-100: Highly relevant (directly covers AI/tech topics)
+- 60-79: Somewhat relevant (mentions AI/tech in passing)
+- 0-59: Not relevant (unrelated to these topics)`
 
     try {
-      const response = await this.model.invoke(prompt)
-      const text =
-        typeof response.content === 'string'
-          ? response.content
-          : JSON.stringify(response.content)
-      const match = text.match(/\d+/)
-      const score = match
-        ? Math.min(100, Math.max(0, parseInt(match[0], 10)))
-        : 50
+      const structuredModel =
+        this.model.withStructuredOutput(RelevanceScoreSchema)
+      const result: RelevanceScore = await structuredModel.invoke(prompt)
+      const score = Math.min(100, Math.max(0, result.score))
       const isRelevant = score >= this.relevanceThreshold
 
-      logger.debug({
+      logger.info({
         event: 'news.score.result',
         itemId: item.id,
-        itemTitle: item.title,
+        itemTitle: item.title.slice(0, 50),
         score,
         isRelevant,
         threshold: this.relevanceThreshold,
@@ -81,7 +92,7 @@ Score:`
   ): Promise<Map<string, { score: number; isRelevant: boolean }>> {
     const results = new Map<string, { score: number; isRelevant: boolean }>()
 
-    logger.debug({
+    logger.info({
       event: 'news.score.start',
       unscoredCount: items.length,
       threshold: this.relevanceThreshold,
