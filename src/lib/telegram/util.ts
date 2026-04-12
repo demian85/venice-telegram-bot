@@ -1,5 +1,5 @@
-const PLACEHOLDER_PREFIX = '«PLACEHOLDER_'
-const PLACEHOLDER_SUFFIX = '_PLACEHOLDER»'
+const PLACEHOLDER_PREFIX = '\x00PLACEHOLDER_'
+const PLACEHOLDER_SUFFIX = '_\x00'
 
 /**
  * Escape special characters that would be interpreted as Markdown in Telegram.
@@ -19,27 +19,39 @@ export function escapeMarkdown(text: string): string {
   if (!text) return ''
 
   const placeholders: string[] = []
+  let placeholderCounter = 0
 
-  let protectedText = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match) => {
+  // Create a unique placeholder that won't appear in normal text
+  const createPlaceholder = (): string => {
+    const id = placeholderCounter++
+    return `${PLACEHOLDER_PREFIX}${id}${PLACEHOLDER_SUFFIX}`
+  }
+
+  // Protect inline code first (must be before other patterns)
+  let protectedText = text.replace(/`([^`]+)`/g, (match) => {
     placeholders.push(match)
-    return `${PLACEHOLDER_PREFIX}${placeholders.length - 1}${PLACEHOLDER_SUFFIX}`
+    return createPlaceholder()
   })
 
+  // Protect links
+  protectedText = protectedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match) => {
+    placeholders.push(match)
+    return createPlaceholder()
+  })
+
+  // Protect bold text
   protectedText = protectedText.replace(/\*([^*]+)\*/g, (match) => {
     placeholders.push(match)
-    return `${PLACEHOLDER_PREFIX}${placeholders.length - 1}${PLACEHOLDER_SUFFIX}`
+    return createPlaceholder()
   })
 
+  // Protect italic text
   protectedText = protectedText.replace(/_([^_]+)_/g, (match) => {
     placeholders.push(match)
-    return `${PLACEHOLDER_PREFIX}${placeholders.length - 1}${PLACEHOLDER_SUFFIX}`
+    return createPlaceholder()
   })
 
-  protectedText = protectedText.replace(/`([^`]+)`/g, (match) => {
-    placeholders.push(match)
-    return `${PLACEHOLDER_PREFIX}${placeholders.length - 1}${PLACEHOLDER_SUFFIX}`
-  })
-
+  // Now escape any remaining markdown characters in plain text
   protectedText = protectedText
     .replace(/\*/g, '\\*')
     .replace(/_/g, '\\_')
@@ -49,12 +61,13 @@ export function escapeMarkdown(text: string): string {
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
 
+  // Restore placeholders
   const placeholderRegex = new RegExp(
-    `${PLACEHOLDER_PREFIX}(\\d+)${PLACEHOLDER_SUFFIX}`,
+    `${PLACEHOLDER_PREFIX}([0-9]+)${PLACEHOLDER_SUFFIX}`,
     'g'
   )
   protectedText = protectedText.replace(placeholderRegex, (_, index) => {
-    return placeholders[parseInt(index)]
+    return placeholders[parseInt(index, 10)] || ''
   })
 
   return protectedText

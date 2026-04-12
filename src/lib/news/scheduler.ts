@@ -242,11 +242,13 @@ export class NewsScheduler {
   private async pollFeeds(): Promise<void> {
     const items = await this.feedReader.fetchAllFeeds(this.config.feeds)
     const limited = items.slice(0, this.config.maxArticlesPerPoll)
+    let storedCount = 0
 
     for (const item of limited) {
       const existing = await this.newsStore.getItem(item.id)
       if (!existing) {
         await this.newsStore.storeItem(item)
+        storedCount++
         continue
       }
 
@@ -259,15 +261,53 @@ export class NewsScheduler {
         'Skipped duplicate news item before store write'
       )
     }
+
+    if (storedCount > 0) {
+      logger.info(
+        {
+          event: 'news.feed.poll.complete',
+          feedCount: this.config.feeds.length,
+          itemsPolled: items.length,
+          itemsStored: storedCount,
+        },
+        `Polled ${this.config.feeds.length} feeds, stored ${storedCount} new articles`
+      )
+    }
   }
 
   private async scoreArticles(): Promise<void> {
     const unscored = await this.newsStore.getUnscoredItems(20)
+
+    if (unscored.length === 0) {
+      return
+    }
+
+    logger.info(
+      {
+        event: 'news.score.start',
+        articleCount: unscored.length,
+      },
+      `Scoring ${unscored.length} articles for relevance`
+    )
+
     const scores = await this.relevanceDetector.batchDetectRelevance(unscored)
+    let relevantCount = 0
 
     for (const [id, { score, isRelevant }] of scores) {
       await this.newsStore.updateRelevance(id, score, isRelevant)
+      if (isRelevant) {
+        relevantCount++
+      }
     }
+
+    logger.info(
+      {
+        event: 'news.score.complete',
+        articleCount: unscored.length,
+        relevantCount,
+      },
+      `Scored ${unscored.length} articles, ${relevantCount} are relevant`
+    )
   }
 
   private async deliverRelevantArticles(
@@ -424,6 +464,17 @@ export class NewsScheduler {
       }
 
       await this.chatSubscriptionStore.markSent(subscription.chatId, now)
+
+      logger.info(
+        {
+          event: 'news.delivery.success',
+          chatId: subscription.chatId,
+          articleId: nextItem.id,
+          articleTitle: nextItem.title,
+          relevanceScore: nextItem.relevanceScore || 0,
+        },
+        `Delivered article "${nextItem.title.slice(0, 50)}..." to chat ${subscription.chatId}`
+      )
 
       logger.debug(
         {
