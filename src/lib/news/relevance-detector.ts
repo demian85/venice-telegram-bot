@@ -17,14 +17,23 @@ export class RelevanceDetector {
     item: NewsItem,
     topics: string[] = [
       'AI',
-      'artificial intelligence',
-      'machine learning',
+      'Artificial intelligence',
+      'Machine learning',
       'LLM',
-      'neural networks',
+      'Neural networks',
       'OpenAI',
       'Anthropic',
       'Claude',
       'GPT',
+      'Meta',
+      'Minimax',
+      'z.ai',
+      'Kimi',
+      'GLM',
+      'OpenClaw',
+      'Opencode',
+      'Deepseek',
+      'Alibaba',
     ]
   ): Promise<{ score: number; isRelevant: boolean }> {
     const content =
