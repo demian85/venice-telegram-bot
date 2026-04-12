@@ -5,7 +5,8 @@ import logger from '@lib/logger'
 import { loadAppConfig } from '@lib/config/load-config'
 import type { AppConfig } from '@lib/config/types'
 import { getRedisClient, closeRedisClient } from '@lib/redis'
-import { NewsScheduler } from '@lib/news'
+import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news'
+import { createAgentTools } from '@lib/agent/tools'
 import { createLlmRoleModels, llmSupportsVision } from '@lib/llm/model'
 
 async function main() {
@@ -14,6 +15,12 @@ async function main() {
 
   const models = createLlmRoleModels(config)
 
+  const newsStore = new NewsStore(redis)
+  const newsQueryService = new NewsQueryService({
+    redis,
+    relevanceThreshold: config.news.relevanceThreshold,
+  })
+
   const bot = new Bot(
     { telegram: config.telegram },
     {
@@ -21,21 +28,32 @@ async function main() {
       summarizerModel: models.summarizer,
       chatSystemPrompt: config.llm.roles.chat.systemPrompt,
       supportsVision: llmSupportsVision('chat', config),
+    },
+    {
+      redis,
+      newsQueryService,
     }
   )
+
+  const tools = createAgentTools({ newsQueryService })
+
   await bot.init()
 
-  const newsScheduler = new NewsScheduler({
-    redis,
-    model: models.newsRelevance,
-    newsConfig: config.news,
-    onDeliverArticle: async ({ chatId, article }) => {
-      await bot.sendNewsArticle(chatId, article)
-      logger.info({ chatId, article }, 'Relevant article delivered')
+  const newsScheduler = new NewsScheduler(
+    {
+      redis,
+      model: models.newsRelevance,
+      newsConfig: config.news,
+      onDeliverArticle: async ({ chatId, article }) => {
+        await bot.sendNewsArticle(chatId, article)
+        logger.info({ chatId, article }, 'Relevant article delivered')
+      },
     },
-  })
+    {
+      newsStore,
+    }
+  )
 
-  // NOTE: Set LOG_LEVEL=debug to see news.scheduler.start and news.job.* events.
   await newsScheduler.start()
   logger.info('News scheduler started')
 

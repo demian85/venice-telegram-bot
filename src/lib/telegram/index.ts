@@ -12,6 +12,7 @@ import {
   maxNewsIntervalSeconds,
   minNewsIntervalSeconds,
   type NewsChatSubscription,
+  NewsQueryService,
 } from '@lib/news'
 import { getRedisClient } from '@lib/redis'
 import { getContextChatScope } from './scope'
@@ -73,6 +74,7 @@ export interface BotDependencies {
   redis?: Redis
   agentService?: AgentService
   chatSubscriptionStore?: ChatSubscriptionStore
+  newsQueryService?: NewsQueryService
 }
 
 export class Bot {
@@ -80,6 +82,7 @@ export class Bot {
   private bot: BotRuntime
   private agentService: AgentService | null = null
   private readonly chatSubscriptionStore: ChatSubscriptionStore
+  private readonly newsQueryService: NewsQueryService | null = null
 
   private readonly registeredCommands = [
     {
@@ -101,6 +104,10 @@ export class Bot {
     {
       command: 'info',
       description: 'Show chat and subscription status',
+    },
+    {
+      command: 'news',
+      description: 'Get recent AI news (1-10 articles)',
     },
     {
       command: 'subscribe',
@@ -142,6 +149,7 @@ export class Bot {
     this.chatSubscriptionStore =
       dependencies.chatSubscriptionStore ??
       new ChatSubscriptionStore(redisClient)
+    this.newsQueryService = dependencies.newsQueryService ?? null
 
     this.bot.use(async (ctx, next) => {
       const scope = getContextChatScope(ctx)
@@ -292,6 +300,88 @@ export class Bot {
       },
       info: async (ctx) => {
         await ctx.reply(await this.buildInfoMessage(ctx))
+      },
+      news: async (ctx) => {
+        if (!this.newsQueryService) {
+          await ctx.reply(
+            'News retrieval is not configured. Please try again later.'
+          )
+          return
+        }
+
+        const args = this.getCommandArguments(ctx)
+        let count = 5
+
+        if (args) {
+          const parsedCount = Number(args)
+          if (
+            !Number.isInteger(parsedCount) ||
+            parsedCount < 1 ||
+            parsedCount > 10
+          ) {
+            await ctx.reply(
+              'Please specify a number between 1 and 10. Example: /news 5'
+            )
+            return
+          }
+          count = parsedCount
+        }
+
+        try {
+          await ctx.sendChatAction('typing')
+          const articles = await this.newsQueryService.getRecentNews(count)
+
+          if (articles.length === 0) {
+            await ctx.reply(
+              "I don't have any relevant news articles right now. News is collected periodically from AI and tech sources. Try again in a few minutes!"
+            )
+            return
+          }
+
+          const lines = [
+            `*Recent AI News (${articles.length} article${articles.length === 1 ? '' : 's'})*`,
+            '',
+          ]
+
+          articles.forEach((article, index) => {
+            const publishedStr = article.publishedAt.toLocaleDateString(
+              'en-US',
+              {
+                month: 'short',
+                day: 'numeric',
+              }
+            )
+
+            lines.push(`${index + 1}. *${this.escapeMarkdown(article.title)}*`)
+            lines.push(
+              `   Source: ${this.escapeMarkdown(article.source)} | ${publishedStr}`
+            )
+            if (article.description) {
+              const desc =
+                article.description.slice(0, 100) +
+                (article.description.length > 100 ? '...' : '')
+              lines.push(`   ${this.escapeMarkdown(desc)}`)
+            }
+            lines.push(`   [Read more](${article.url})`)
+            if (article.relevanceScore !== undefined) {
+              lines.push(`   Relevance: ${article.relevanceScore}/100`)
+            }
+            lines.push('')
+          })
+
+          await ctx.reply(lines.join('\n'), {
+            parse_mode: 'Markdown',
+            link_preview_options: { is_disabled: false },
+          })
+        } catch (error) {
+          logger.error(
+            { error, chatId: ctx.chat?.id },
+            'Failed to retrieve news'
+          )
+          await ctx.reply(
+            "Sorry, I couldn't retrieve news right now. Please try again later."
+          )
+        }
       },
       subscribe: async (ctx) => {
         if (!(await this.ensureSubscriptionCommandAccess(ctx, 'subscribe'))) {
@@ -623,6 +713,7 @@ export class Bot {
       '/abort - abort the current interactive operation',
       '/clear - clear stored conversation history for this chat scope',
       '/info - show chat scope and subscription details',
+      '/news [count] - get recent AI news (1-10 articles, default: 5)',
       '/subscribe - enable relevant AI news delivery for this chat',
       '/unsubscribe - disable relevant AI news delivery for this chat',
       `/interval [seconds] - show or set the news cadence (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds})`,
