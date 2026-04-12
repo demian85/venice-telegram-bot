@@ -1,6 +1,7 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { StructuredTool } from '@langchain/core/tools'
+import type { NewsQueryService } from '@lib/news'
 
 function safeEvaluate(expression: string): number {
   const sanitized = expression.replace(/[^0-9+\-*/.()\s]/g, '')
@@ -57,13 +58,15 @@ I am an AI-powered Telegram bot. Here's what I can do:
 - /subscribe - Enable AI news delivery for this chat
 - /unsubscribe - Disable AI news delivery for this chat
 - /interval [seconds] - Show or set the news delivery interval
+- /news [count] - Get recent AI news (1-10 articles)
 
 **Tools:**
 - Calculator: Ask me to calculate expressions
 - Current Time: Ask for the current time
+- Recent News: Ask for latest news headlines
 
 **News Monitoring:**
-I monitor AI news feeds and forward relevant articles to groups.
+I monitor AI news feeds and forward relevant articles to groups. You can also ask me for recent news anytime.
 `
 
     const calculatorHelp = `
@@ -88,6 +91,19 @@ Examples:
 - "Give me a timestamp"
 `
 
+    const newsHelp = `
+**Recent News Tool:**
+I can retrieve the latest AI news articles I've collected.
+
+Examples:
+- "Show me the latest 5 news"
+- "What are the recent AI headlines?"
+- "Get me 10 recent articles"
+- "Any news today?"
+
+I track news from multiple sources including Planet AI, Hacker News, Google AI, Hugging Face, and more.
+`
+
     const topicLower = topic?.toLowerCase() || ''
 
     if (topicLower.includes('calculator') || topicLower.includes('math')) {
@@ -96,19 +112,26 @@ Examples:
     if (topicLower.includes('time') || topicLower.includes('date')) {
       return timeHelp
     }
+    if (
+      topicLower.includes('news') ||
+      topicLower.includes('article') ||
+      topicLower.includes('headline')
+    ) {
+      return newsHelp
+    }
 
     return generalHelp
   },
   {
     name: 'help',
     description:
-      'Get help about bot capabilities and commands. Optionally specify a topic like "calculator" or "time".',
+      'Get help about bot capabilities and commands. Optionally specify a topic like "calculator", "time", or "news".',
     schema: z.object({
       topic: z
         .string()
         .optional()
         .describe(
-          'Optional topic to get specific help about (e.g., "calculator", "time")'
+          'Optional topic to get specific help about (e.g., "calculator", "time", "news")'
         ),
     }),
   }
@@ -152,5 +175,83 @@ export const timeTool = tool(
     }),
   }
 )
+
+export function createRecentNewsTool(
+  newsQueryService: NewsQueryService
+): StructuredTool {
+  return tool(
+    async ({ count }) => {
+      try {
+        const articles = await newsQueryService.getRecentNews(count)
+
+        if (articles.length === 0) {
+          return "I don't have any relevant news articles available right now. News is collected periodically from various AI and tech sources. Try again in a few minutes, or subscribe to get news delivered automatically with /subscribe."
+        }
+
+        const lines = [
+          `Here are the latest ${articles.length} relevant AI news article${articles.length === 1 ? '' : 's'} I found:`,
+          '',
+        ]
+
+        articles.forEach((article, index) => {
+          const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })
+          const description = article.description
+            ? article.description.slice(0, 100) +
+              (article.description.length > 100 ? '...' : '')
+            : ''
+
+          lines.push(`${index + 1}. *${article.title}*`)
+          lines.push(`   Source: ${article.source} | ${publishedStr}`)
+          if (description) {
+            lines.push(`   ${description}`)
+          }
+          lines.push(`   URL: ${article.url}`)
+          if (article.relevanceScore !== undefined) {
+            lines.push(`   Relevance: ${article.relevanceScore}/100`)
+          }
+          lines.push('')
+        })
+
+        return lines.join('\n')
+      } catch (error) {
+        console.error('Error retrieving recent news:', error)
+        return "I couldn't retrieve recent news right now. Please try again later or use /news command."
+      }
+    },
+    {
+      name: 'get_recent_news',
+      description:
+        'Retrieve the most recent relevant news articles collected by the bot from RSS feeds. Use this when the user asks for latest news, recent headlines, recent articles, or past news items. Returns AI/tech news from sources like Planet AI, Hacker News, Google AI, and Hugging Face.',
+      schema: z.object({
+        count: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .default(5)
+          .describe('How many recent news articles to retrieve, from 1 to 10'),
+      }),
+    }
+  )
+}
+
+export interface AgentToolDependencies {
+  newsQueryService?: NewsQueryService
+}
+
+export function createAgentTools(
+  deps: AgentToolDependencies = {}
+): StructuredTool[] {
+  const tools: StructuredTool[] = [calculatorTool, helpTool, timeTool]
+
+  if (deps.newsQueryService) {
+    tools.push(createRecentNewsTool(deps.newsQueryService))
+  }
+
+  return tools
+}
 
 export const allTools: StructuredTool[] = [calculatorTool, helpTool, timeTool]
