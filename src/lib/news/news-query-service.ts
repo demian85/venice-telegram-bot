@@ -35,19 +35,24 @@ export class NewsQueryService {
       clampedLimit - 1
     )
 
-    const items: RecentNewsItem[] = []
+    const scoredItems: RecentNewsItem[] = []
+    const unscoredItems: RecentNewsItem[] = []
+
     for (const id of ids) {
       const item = await this.getNewsItem(id)
+      if (!item) continue
+
       if (
-        item &&
         item.relevanceScore !== undefined &&
         item.relevanceScore >= this.relevanceThreshold
       ) {
-        items.push(item)
+        scoredItems.push(item)
+      } else if (item.relevanceScore === undefined) {
+        unscoredItems.push(item)
       }
     }
 
-    return items
+    return scoredItems.length > 0 ? scoredItems : unscoredItems
   }
 
   async getRecentNewsRaw(limit: number): Promise<RecentNewsItem[]> {

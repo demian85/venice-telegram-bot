@@ -84,3 +84,13 @@ export function formatTelegramMarkdownReply(input: string): string {
   // Then escape any problematic characters while preserving intentional formatting
   return escapeMarkdown(converted).trim()
 }
+
+/**
+ * Create a Markdown link with proper URL escaping for Telegram.
+ * URLs with parentheses or special characters will break standard Markdown link syntax.
+ */
+export function createMarkdownLink(text: string, url: string): string {
+  if (!url) return escapeMarkdown(text)
+  const safeUrl = url.replace(/\)/g, '%29')
+  return `[${escapeMarkdown(text)}](${safeUrl})`
+}

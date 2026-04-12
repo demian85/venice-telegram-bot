@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { NewsQueryService } from '@lib/news/index.js'
+import { escapeMarkdown } from '@lib/telegram/util.js'
 
 function safeEvaluate(expression: string): number {
   const sanitized = expression.replace(/[^0-9+\-*/.()\s]/g, '')
@@ -203,10 +204,12 @@ export function createRecentNewsTool(
               (article.description.length > 200 ? '...' : '')
             : ''
 
-          lines.push(`${index + 1}. ${article.title}`)
-          lines.push(`Source: ${article.source} | ${publishedStr}`)
+          lines.push(`${index + 1}. ${escapeMarkdown(article.title)}`)
+          lines.push(
+            `Source: ${escapeMarkdown(article.source)} | ${publishedStr}`
+          )
           if (description) {
-            lines.push(description)
+            lines.push(escapeMarkdown(description))
           }
           lines.push(`Read full article: ${article.url}`)
           if (article.relevanceScore !== undefined) {
@@ -231,6 +234,7 @@ export function createRecentNewsTool(
           .int()
           .min(1)
           .max(10)
+          .optional()
           .default(5)
           .describe('How many recent news articles to retrieve, from 1 to 10'),
       }),

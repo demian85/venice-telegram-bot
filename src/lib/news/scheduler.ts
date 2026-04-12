@@ -249,6 +249,12 @@ export class NewsScheduler {
   }
 
   private async pollFeeds(): Promise<void> {
+    logger.trace(
+      { event: 'news.poll.start', feedCount: this.config.feeds.length },
+      'Starting pollFeeds cycle'
+    )
+    const startTime = Date.now()
+
     logger.info(
       {
         event: 'news.poll.starting',
@@ -299,14 +305,24 @@ export class NewsScheduler {
       )
     }
 
+    const pollDuration = Date.now() - startTime
     logger.info(
       {
         event: 'news.poll.complete',
         feedCount: this.config.feeds.length,
         itemsPolled: items.length,
         itemsStored: storedCount,
+        durationMs: pollDuration,
       },
       `Poll complete: ${storedCount} new articles stored (${items.length} total fetched)`
+    )
+    logger.trace(
+      {
+        event: 'news.poll.end',
+        durationMs: pollDuration,
+        itemsStored: storedCount,
+      },
+      'pollFeeds cycle completed'
     )
   }
 
@@ -349,6 +365,12 @@ export class NewsScheduler {
     callback: DeliveryCallback
   ): Promise<void> {
     const now = new Date()
+    logger.trace(
+      { event: 'news.delivery.start' },
+      'Starting deliverRelevantArticles cycle'
+    )
+    const startTime = Date.now()
+
     const [subscriptions, relevantItems] = await Promise.all([
       this.chatSubscriptionStore.listEnabledSubscriptions(),
       this.newsStore.getRelevantItems(this.config.relevanceThreshold),
@@ -525,6 +547,16 @@ export class NewsScheduler {
         'Recorded successful relevant article delivery'
       )
     }
+
+    const deliveryDuration = Date.now() - startTime
+    logger.trace(
+      {
+        event: 'news.delivery.end',
+        durationMs: deliveryDuration,
+        subscriptionsProcessed: subscriptions.length,
+      },
+      'deliverRelevantArticles cycle completed'
+    )
   }
 
   private getEligibleDeliveryTime(subscription: {

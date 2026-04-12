@@ -37,6 +37,15 @@ export class RelevanceDetector {
   async detectRelevance(
     item: NewsItem
   ): Promise<{ score: number; isRelevant: boolean }> {
+    logger.trace(
+      {
+        event: 'news.score.start',
+        itemId: item.id,
+        itemTitle: item.title.slice(0, 50),
+      },
+      'Starting relevance scoring'
+    )
+    const startTime = Date.now()
     const content =
       `${item.title}\n${item.description || ''}\n${item.content || ''}`.slice(
         0,
@@ -61,6 +70,7 @@ Scoring guidelines:
       const score = Math.min(100, Math.max(0, result.score))
       const isRelevant = score >= this.relevanceThreshold
 
+      const duration = Date.now() - startTime
       logger.info({
         event: 'news.score.result',
         itemId: item.id,
@@ -68,7 +78,17 @@ Scoring guidelines:
         score,
         isRelevant,
         threshold: this.relevanceThreshold,
+        durationMs: duration,
       })
+      logger.trace(
+        {
+          event: 'news.score.complete',
+          itemId: item.id,
+          durationMs: duration,
+          score,
+        },
+        'Relevance scoring completed'
+      )
 
       return {
         score,

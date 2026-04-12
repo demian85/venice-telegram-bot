@@ -22,7 +22,11 @@ import {
   type MessageEntity,
 } from './types.js'
 import { Config } from '@lib/types.js'
-import { formatTelegramMarkdownReply } from './util.js'
+import {
+  formatTelegramMarkdownReply,
+  escapeMarkdown,
+  createMarkdownLink,
+} from './util.js'
 
 export interface BotModels {
   agentModel: ChatOpenAI
@@ -243,13 +247,13 @@ export class Bot {
   ): Promise<void> {
     const lines = [
       '*Relevant AI news*',
-      `*${this.escapeMarkdown(article.title)}*`,
-      `[Read more](${article.url})`,
+      `*${escapeMarkdown(article.title)}*`,
+      createMarkdownLink('Read more', article.url),
       `Relevance score: ${article.relevanceScore}`,
     ]
 
     if (article.description) {
-      lines.splice(2, 0, this.escapeMarkdown(article.description))
+      lines.splice(2, 0, escapeMarkdown(article.description))
     }
 
     const logContext = {
@@ -323,9 +327,9 @@ export class Bot {
           if (raw.length > 0) {
             lines.push(`Latest articles (no filter):`)
             raw.slice(0, 5).forEach((a, i) => {
-              lines.push(`${i + 1}. ${a.title}`)
+              lines.push(`${i + 1}. ${escapeMarkdown(a.title)}`)
               lines.push(
-                `   Score: ${a.relevanceScore ?? 'unscored'} | Source: ${a.source}`
+                `   Score: ${a.relevanceScore ?? 'unscored'} | Source: ${escapeMarkdown(a.source)}`
               )
             })
           } else {
@@ -390,15 +394,19 @@ export class Bot {
               }
             )
 
-            lines.push(`*${index + 1}. ${article.title}*`)
-            lines.push(`📰 Source: ${article.source} | 📅 ${publishedStr}`)
+            lines.push(`*${index + 1}. ${escapeMarkdown(article.title)}*`)
+            lines.push(
+              `📰 Source: ${escapeMarkdown(article.source)} | 📅 ${publishedStr}`
+            )
             if (article.description) {
               const desc =
                 article.description.slice(0, 200) +
                 (article.description.length > 200 ? '...' : '')
-              lines.push(`${desc}`)
+              lines.push(`${escapeMarkdown(desc)}`)
             }
-            lines.push(`🔗 [Read full article](${article.url})`)
+            lines.push(
+              `🔗 ${createMarkdownLink('Read full article', article.url)}`
+            )
             if (article.relevanceScore !== undefined) {
               lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
             }
@@ -563,10 +571,6 @@ export class Bot {
       )
       await ctx.reply('Sorry, I encountered an error. Please try again.')
     }
-  }
-
-  private escapeMarkdown(text: string): string {
-    return text.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1')
   }
 
   private async handleIncomingMessage(

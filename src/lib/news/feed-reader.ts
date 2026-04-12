@@ -14,6 +14,12 @@ export class FeedReader {
   private readonly seenUrls: Set<string> = new Set()
 
   async fetchFeed(url: string): Promise<NewsItem[]> {
+    logger.trace(
+      { event: 'news.feed.fetch.start', feedUrl: url },
+      'Starting feed fetch'
+    )
+    const startTime = Date.now()
+
     try {
       const feed = await extract(url)
       const items: NewsItem[] = []
@@ -46,13 +52,24 @@ export class FeedReader {
         this.seenUrls.add(link)
       }
 
+      const duration = Date.now() - startTime
       logger.debug(
         {
           event: 'news.feed.fetch.success',
           feedUrl: url,
           itemCount: items.length,
+          durationMs: duration,
         },
         'Fetched news feed'
+      )
+      logger.trace(
+        {
+          event: 'news.feed.fetch.complete',
+          feedUrl: url,
+          durationMs: duration,
+          itemCount: items.length,
+        },
+        'Feed fetch completed'
       )
 
       return items

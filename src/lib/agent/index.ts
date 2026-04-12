@@ -105,11 +105,40 @@ export class AgentService {
     })
 
     try {
+      logger.debug(
+        {
+          messageCount: messages.length,
+          toolCount: this.tools.length,
+          toolNames: this.tools.map((t) => t.name),
+        },
+        'Agent invoke starting'
+      )
+
       const result = await this.agent.invoke({
         messages,
       })
 
       const lastMessage = result.messages[result.messages.length - 1]
+      const toolCalls = (lastMessage as any).tool_calls
+      const responsePreview = lastMessage.content
+        ? extractTextContent(lastMessage.content as MessageContent).slice(
+            0,
+            200
+          )
+        : ''
+
+      logger.info(
+        {
+          hasToolCalls: Array.isArray(toolCalls) && toolCalls.length > 0,
+          toolCallCount: Array.isArray(toolCalls) ? toolCalls.length : 0,
+          toolCalls: Array.isArray(toolCalls)
+            ? toolCalls.map((c: any) => ({ name: c.name, args: c.args }))
+            : [],
+          responsePreview,
+        },
+        'Agent invoke completed'
+      )
+
       const responseText = extractTextContent(
         lastMessage.content as MessageContent
       )
