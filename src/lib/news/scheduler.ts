@@ -186,16 +186,27 @@ export class NewsScheduler {
       },
     ] as const
 
+    logger.info(
+      {
+        event: 'news.scheduler.starting',
+        feedCount: this.config.feeds.length,
+        feeds: this.config.feeds,
+        pollIntervalMinutes: this.config.pollIntervalMinutes,
+        relevanceThreshold: this.config.relevanceThreshold,
+      },
+      `Starting news scheduler with ${this.config.feeds.length} feeds`
+    )
+
     for (const job of startupJobRegistrations) {
       await this.queue.add(job.name, {}, { jobId: job.jobId })
-      logger.debug(
+      logger.info(
         {
           event: 'news.job.enqueue',
           jobName: job.name,
           jobId: job.jobId,
           schedule: 'startup',
         },
-        'News job enqueued'
+        `Enqueued startup job: ${job.name}`
       )
     }
 
@@ -208,7 +219,7 @@ export class NewsScheduler {
           repeat: { every: job.everyMs },
         }
       )
-      logger.debug(
+      logger.info(
         {
           event: 'news.job.enqueue',
           jobName: job.name,
@@ -216,21 +227,19 @@ export class NewsScheduler {
           schedule: 'repeat',
           repeatEveryMs: job.everyMs,
         },
-        'News job enqueued'
+        `Enqueued repeat job: ${job.name} (every ${job.everyMs}ms)`
       )
     }
 
-    // NOTE: This startup event is debug-only; set LOG_LEVEL=debug to see it.
-    logger.debug(
+    logger.info(
       {
-        event: 'news.scheduler.start',
+        event: 'news.scheduler.started',
         pollIntervalMinutes: this.config.pollIntervalMinutes,
         deliveryIntervalMs,
         feedCount: this.config.feeds.length,
         relevanceThreshold: this.config.relevanceThreshold,
-        repeatJobRegistrations,
       },
-      'News scheduler jobs registered'
+      'News scheduler started successfully'
     )
   }
 
@@ -240,7 +249,26 @@ export class NewsScheduler {
   }
 
   private async pollFeeds(): Promise<void> {
+    logger.info(
+      {
+        event: 'news.poll.starting',
+        feedCount: this.config.feeds.length,
+        feeds: this.config.feeds,
+      },
+      `Polling ${this.config.feeds.length} feeds for new articles`
+    )
+
     const items = await this.feedReader.fetchAllFeeds(this.config.feeds)
+
+    logger.info(
+      {
+        event: 'news.poll.fetched',
+        feedCount: this.config.feeds.length,
+        totalItems: items.length,
+      },
+      `Fetched ${items.length} articles from feeds`
+    )
+
     const limited = items.slice(0, this.config.maxArticlesPerPoll)
     let storedCount = 0
 
@@ -249,6 +277,15 @@ export class NewsScheduler {
       if (!existing) {
         await this.newsStore.storeItem(item)
         storedCount++
+        logger.info(
+          {
+            event: 'news.item.stored',
+            itemId: item.id,
+            itemTitle: item.title,
+            itemSource: item.source,
+          },
+          `Stored new article: ${item.title.slice(0, 50)}...`
+        )
         continue
       }
 
@@ -262,17 +299,15 @@ export class NewsScheduler {
       )
     }
 
-    if (storedCount > 0) {
-      logger.info(
-        {
-          event: 'news.feed.poll.complete',
-          feedCount: this.config.feeds.length,
-          itemsPolled: items.length,
-          itemsStored: storedCount,
-        },
-        `Polled ${this.config.feeds.length} feeds, stored ${storedCount} new articles`
-      )
-    }
+    logger.info(
+      {
+        event: 'news.poll.complete',
+        feedCount: this.config.feeds.length,
+        itemsPolled: items.length,
+        itemsStored: storedCount,
+      },
+      `Poll complete: ${storedCount} new articles stored (${items.length} total fetched)`
+    )
   }
 
   private async scoreArticles(): Promise<void> {
