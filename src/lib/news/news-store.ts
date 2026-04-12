@@ -147,6 +147,34 @@ export class NewsStore {
     }
   }
 
+  async getRecentItems(options: {
+    limit: number
+    minRelevanceScore?: number
+  }): Promise<NewsItem[]> {
+    const { limit, minRelevanceScore } = options
+    const ids = await this.redis.zrevrange(
+      `${this.keyPrefix}items`,
+      0,
+      limit - 1
+    )
+
+    const items: NewsItem[] = []
+    for (const id of ids) {
+      const item = await this.getItem(id)
+      if (!item) continue
+
+      if (
+        minRelevanceScore === undefined ||
+        (item.relevanceScore !== undefined &&
+          item.relevanceScore >= minRelevanceScore)
+      ) {
+        items.push(item)
+      }
+    }
+
+    return items
+  }
+
   private passesThreshold(item: NewsItem, threshold: number): boolean {
     return item.relevanceScore !== undefined && item.relevanceScore >= threshold
   }

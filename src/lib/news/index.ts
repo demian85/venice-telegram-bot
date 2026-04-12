@@ -4,6 +4,11 @@ export { NewsStore } from './news-store'
 export { NewsDeliveryStore } from './news-delivery-store'
 export { RelevanceDetector } from './relevance-detector'
 export { NewsScheduler, type NewsSchedulerConfig } from './scheduler'
+export {
+  NewsQueryService,
+  type RecentNewsItem,
+  type NewsQueryServiceConfig,
+} from './news-query-service'
 export type {
   NewsConfig,
   NewsChatSubscription,
