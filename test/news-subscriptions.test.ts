@@ -12,6 +12,7 @@ import {
 } from '../src/lib/news'
 import {
   InMemoryRedis,
+  captureLoggerRecords,
   createNoopQueue,
   createNoopWorker,
 } from './test-helpers'
@@ -45,6 +46,13 @@ async function overwriteSubscription(
     `news:chat-subscription:${subscription.chatId}`,
     JSON.stringify(subscription)
   )
+}
+
+function getEventRecords(
+  records: Array<{ context: Record<string, unknown> }>,
+  event: string
+) {
+  return records.filter((record) => record.context.event === event)
 }
 
 test('subscription defaults are disabled, use the default interval, and reject invalid intervals', async () => {
@@ -98,7 +106,7 @@ test('unsubscribe and resubscribe preserve the interval while resetting future d
   assert.equal(resubscribed.unsubscribedAt, undefined)
 })
 
-test('delivery stays isolated per chat and chooses the oldest eligible undelivered article first', async () => {
+test('delivery stays isolated per chat and chooses the oldest eligible undelivered article first', async (t) => {
   const redis = new InMemoryRedis()
   const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
   const deliveryStore = new NewsDeliveryStore(redis.asRedis())
@@ -143,23 +151,90 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
   )
 
   const firstPass: Array<{ chatId: string; title: string }> = []
-  await (
-    scheduler as never as {
-      deliverRelevantArticles(
-        callback: (delivery: {
-          chatId: string
-          article: { title: string }
-        }) => Promise<void>
-      ): Promise<void>
-    }
-  ).deliverRelevantArticles(async (delivery) => {
-    firstPass.push({ chatId: delivery.chatId, title: delivery.article.title })
+  const { records: firstPassRecords } = await captureLoggerRecords(async () => {
+    await (
+      scheduler as never as {
+        deliverRelevantArticles(
+          callback: (delivery: {
+            chatId: string
+            article: { title: string }
+          }) => Promise<void>
+        ): Promise<void>
+      }
+    ).deliverRelevantArticles(async (delivery) => {
+      firstPass.push({ chatId: delivery.chatId, title: delivery.article.title })
+    })
   })
 
   assert.deepEqual(firstPass, [
     { chatId: 'chat-a', title: 'First relevant story' },
     { chatId: 'chat-b', title: 'First relevant story' },
   ])
+
+  assert.equal(
+    getEventRecords(firstPassRecords, 'news.delivery.tick').length,
+    1
+  )
+
+  const eligibleRecords = getEventRecords(
+    firstPassRecords,
+    'news.delivery.chat.eligible'
+  )
+  assert.equal(eligibleRecords.length, 2)
+  assert.deepEqual(
+    eligibleRecords.map((record) => record.context.chatId),
+    ['chat-a', 'chat-b']
+  )
+  assert.deepEqual(
+    eligibleRecords.map((record) => record.context.pendingArticleId),
+    ['item-1', 'item-1']
+  )
+
+  const sendStartRecords = getEventRecords(
+    firstPassRecords,
+    'news.telegram.send.start'
+  )
+  assert.equal(sendStartRecords.length, 2)
+  assert.deepEqual(
+    sendStartRecords.map((record) => record.context.deliveryState),
+    ['marked_delivered', 'marked_delivered']
+  )
+
+  const sendSuccessRecords = getEventRecords(
+    firstPassRecords,
+    'news.telegram.send.success'
+  )
+  assert.equal(sendSuccessRecords.length, 2)
+  assert.deepEqual(
+    sendSuccessRecords.map((record) => record.context.deliveryState),
+    ['marked_sent', 'marked_sent']
+  )
+
+  t.diagnostic(
+    JSON.stringify({
+      scenario: 'happy_delivery',
+      events: [
+        ...eligibleRecords.map((record) => ({
+          event: record.context.event,
+          chatId: record.context.chatId,
+          pendingArticleId: record.context.pendingArticleId,
+        })),
+        ...sendStartRecords.map((record) => ({
+          event: record.context.event,
+          chatId: record.context.chatId,
+          articleId: record.context.articleId,
+          deliveryState: record.context.deliveryState,
+        })),
+        ...sendSuccessRecords.map((record) => ({
+          event: record.context.event,
+          chatId: record.context.chatId,
+          articleId: record.context.articleId,
+          deliveryState: record.context.deliveryState,
+        })),
+      ],
+    })
+  )
+
   assert.equal(await deliveryStore.hasDelivered('chat-a', 'item-1'), true)
   assert.equal(await deliveryStore.hasDelivered('chat-b', 'item-1'), true)
 
@@ -192,7 +267,7 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
   ])
 })
 
-test('delivery respects cooldowns and skips items fetched before a resubscribe gate', async () => {
+test('delivery respects cooldowns and skips items fetched before a resubscribe gate', async (t) => {
   const redis = new InMemoryRedis()
   const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
   const deliveryStore = new NewsDeliveryStore(redis.asRedis())
@@ -238,15 +313,45 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
   subscription.lastSentAt = new Date()
   await overwriteSubscription(redis, subscription)
 
-  await (
-    scheduler as never as {
-      deliverRelevantArticles(
-        callback: (delivery: { article: { title: string } }) => Promise<void>
-      ): Promise<void>
+  const { records: cooldownBlockedRecords } = await captureLoggerRecords(
+    async () => {
+      await (
+        scheduler as never as {
+          deliverRelevantArticles(
+            callback: (delivery: {
+              article: { title: string }
+            }) => Promise<void>
+          ): Promise<void>
+        }
+      ).deliverRelevantArticles(async (delivery) => {
+        cooldownBlocked.push(delivery.article.title)
+      })
     }
-  ).deliverRelevantArticles(async (delivery) => {
-    cooldownBlocked.push(delivery.article.title)
-  })
+  )
+
+  const blockedRecord = cooldownBlockedRecords.find(
+    (record) =>
+      record.context.event === 'news.delivery.chat.skip' &&
+      record.context.chatId === 'chat-1'
+  )
+
+  assert.ok(blockedRecord)
+  assert.equal(blockedRecord.context.skipReason, 'not_due')
+  assert.equal(
+    getEventRecords(cooldownBlockedRecords, 'news.telegram.send.start').length,
+    0
+  )
+
+  t.diagnostic(
+    JSON.stringify({
+      scenario: 'cooldown_blocked',
+      event: {
+        event: blockedRecord.context.event,
+        chatId: blockedRecord.context.chatId,
+        skipReason: blockedRecord.context.skipReason,
+      },
+    })
+  )
 
   assert.deepEqual(cooldownBlocked, [])
 
@@ -267,4 +372,130 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
   assert.deepEqual(deliveredTitles, ['Eligible new item'])
   assert.equal(await deliveryStore.hasDelivered('chat-1', 'too-old'), false)
   assert.equal(await deliveryStore.hasDelivered('chat-1', 'eligible'), true)
+})
+
+test('delivery rollback unmarks an article when the send callback fails', async (t) => {
+  const redis = new InMemoryRedis()
+  const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
+  const deliveryStore = new NewsDeliveryStore(redis.asRedis())
+  const newsStore = new NewsStore(redis.asRedis())
+
+  await subscriptionStore.subscribe(
+    'chat-rollback',
+    new Date('2026-04-11T09:00:00.000Z')
+  )
+  await newsStore.storeItem(
+    createNewsItem({
+      id: 'rollback-item',
+      title: 'Rollback story',
+      fetchedAt: '2026-04-11T09:01:00.000Z',
+    })
+  )
+
+  const scheduler = new NewsScheduler(
+    {
+      redis: redis.asRedis(),
+      model: {} as never,
+      newsConfig: defaultNewsConfig,
+    },
+    {
+      chatSubscriptionStore: subscriptionStore,
+      newsDeliveryStore: deliveryStore,
+      newsStore,
+      queue: createNoopQueue(),
+      worker: createNoopWorker(),
+    }
+  )
+
+  const { records: rollbackRecords } = await captureLoggerRecords(async () => {
+    await assert.rejects(
+      () =>
+        (
+          scheduler as never as {
+            deliverRelevantArticles(
+              callback: (delivery: {
+                chatId: string
+                article: { articleId: string; title: string }
+              }) => Promise<void>
+            ): Promise<void>
+          }
+        ).deliverRelevantArticles(async (delivery) => {
+          assert.equal(delivery.chatId, 'chat-rollback')
+          assert.equal(delivery.article.articleId, 'rollback-item')
+          throw new Error('Simulated Telegram send failure')
+        }),
+      /Simulated Telegram send failure/
+    )
+  })
+
+  const eligibleRollbackRecord = rollbackRecords.find(
+    (record) =>
+      record.context.event === 'news.delivery.chat.eligible' &&
+      record.context.chatId === 'chat-rollback'
+  )
+  assert.ok(eligibleRollbackRecord)
+  assert.equal(eligibleRollbackRecord.context.pendingArticleId, 'rollback-item')
+
+  const sendStartRecord = rollbackRecords.find(
+    (record) =>
+      record.context.event === 'news.telegram.send.start' &&
+      record.context.chatId === 'chat-rollback'
+  )
+  assert.ok(sendStartRecord)
+  assert.equal(sendStartRecord.context.articleId, 'rollback-item')
+
+  const sendErrorRecord = rollbackRecords.find(
+    (record) =>
+      record.context.event === 'news.telegram.send.error' &&
+      record.context.chatId === 'chat-rollback'
+  )
+  assert.ok(sendErrorRecord)
+  assert.equal(sendErrorRecord.context.rollbackAction, 'unmarkDelivered')
+
+  const rollbackRecord = rollbackRecords.find(
+    (record) =>
+      record.context.event === 'news.delivery.rollback' &&
+      record.context.chatId === 'chat-rollback'
+  )
+  assert.ok(rollbackRecord)
+  assert.equal(rollbackRecord.context.rollbackAction, 'unmarkDelivered')
+  assert.equal(
+    getEventRecords(rollbackRecords, 'news.telegram.send.success').length,
+    0
+  )
+
+  t.diagnostic(
+    JSON.stringify({
+      scenario: 'send_failure_rollback',
+      events: [
+        {
+          event: eligibleRollbackRecord.context.event,
+          chatId: eligibleRollbackRecord.context.chatId,
+          pendingArticleId: eligibleRollbackRecord.context.pendingArticleId,
+        },
+        {
+          event: sendStartRecord.context.event,
+          chatId: sendStartRecord.context.chatId,
+          articleId: sendStartRecord.context.articleId,
+        },
+        {
+          event: sendErrorRecord.context.event,
+          chatId: sendErrorRecord.context.chatId,
+          articleId: sendErrorRecord.context.articleId,
+          rollbackAction: sendErrorRecord.context.rollbackAction,
+        },
+        {
+          event: rollbackRecord.context.event,
+          chatId: rollbackRecord.context.chatId,
+          articleId: rollbackRecord.context.articleId,
+          rollbackAction: rollbackRecord.context.rollbackAction,
+        },
+      ],
+    })
+  )
+
+  assert.equal(
+    await deliveryStore.hasDelivered('chat-rollback', 'rollback-item'),
+    false
+  )
 })

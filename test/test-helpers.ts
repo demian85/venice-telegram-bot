@@ -1,6 +1,14 @@
+import logger from '../src/lib/logger'
+
 type SortedSetEntry = {
   member: string
   score: number
+}
+
+export type CapturedLogRecord = {
+  level: 'debug' | 'info' | 'warn' | 'error'
+  context: Record<string, unknown>
+  message?: string
 }
 
 export class InMemoryRedis {
@@ -349,6 +357,60 @@ export function createNoopQueue() {
 export function createNoopWorker() {
   return {
     close: async () => undefined,
+  }
+}
+
+function normalizeLogCall(args: unknown[]): {
+  context: Record<string, unknown>
+  message?: string
+} {
+  let context: Record<string, unknown> = {}
+  let message: string | undefined
+
+  if (args[0] && typeof args[0] === 'object' && !Array.isArray(args[0])) {
+    context = args[0] as Record<string, unknown>
+  } else if (typeof args[0] === 'string') {
+    message = args[0]
+  }
+
+  if (typeof args[1] === 'string') {
+    message = args[1]
+  }
+
+  return { context, message }
+}
+
+export async function captureLoggerRecords<T>(
+  run: () => Promise<T> | T
+): Promise<{ result: T; records: CapturedLogRecord[] }> {
+  const levels = ['debug', 'info', 'warn', 'error'] as const
+  const records: CapturedLogRecord[] = []
+  const originals = new Map<
+    (typeof levels)[number],
+    | typeof logger.debug
+    | typeof logger.info
+    | typeof logger.warn
+    | typeof logger.error
+  >()
+
+  for (const level of levels) {
+    originals.set(level, logger[level])
+    ;(logger as unknown as Record<string, unknown>)[level] = (
+      ...args: unknown[]
+    ) => {
+      const { context, message } = normalizeLogCall(args)
+      records.push({ level, context, message })
+    }
+  }
+
+  try {
+    const result = await run()
+    return { result, records }
+  } finally {
+    for (const level of levels) {
+      ;(logger as unknown as Record<string, unknown>)[level] =
+        originals.get(level)
+    }
   }
 }
 

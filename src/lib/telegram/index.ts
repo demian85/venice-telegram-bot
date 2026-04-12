@@ -25,6 +25,7 @@ export interface BotModels {
 }
 
 export interface BotNewsArticle {
+  articleId: string
   title: string
   url: string
   description?: string
@@ -164,7 +165,7 @@ export class Bot {
       ctx.isMention = this.isMentioned(ctx)
       ctx.parsedMessageText = this.getParsedMessageText(ctx)
 
-      logger.debug(
+      logger.trace(
         {
           message: ctx.message,
           update: ctx.update,
@@ -234,12 +235,43 @@ export class Bot {
       lines.splice(2, 0, this.escapeMarkdown(article.description))
     }
 
-    await this.bot.telegram.sendMessage(chatId, lines.join('\n\n'), {
-      parse_mode: 'Markdown',
-      link_preview_options: {
-        is_disabled: false,
-      },
-    })
+    const logContext = {
+      event: 'news.telegram.send.start',
+      chatId,
+      articleId: article.articleId,
+      articleTitle: article.title,
+      articleUrl: article.url,
+      score: article.relevanceScore,
+    }
+
+    logger.debug(logContext, 'Starting Telegram news delivery')
+
+    try {
+      await this.bot.telegram.sendMessage(chatId, lines.join('\n\n'), {
+        parse_mode: 'Markdown',
+        link_preview_options: {
+          is_disabled: false,
+        },
+      })
+
+      logger.debug(
+        {
+          ...logContext,
+          event: 'news.telegram.send.success',
+        },
+        'Telegram news delivery succeeded'
+      )
+    } catch (error) {
+      logger.error(
+        {
+          ...logContext,
+          event: 'news.telegram.send.error',
+          err: error,
+        },
+        'Telegram news delivery failed'
+      )
+      throw error
+    }
   }
 
   private buildCommands() {

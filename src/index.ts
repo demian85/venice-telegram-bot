@@ -54,6 +54,7 @@ async function main() {
     },
   })
 
+  // NOTE: Set LOG_LEVEL=debug to see news.scheduler.start and news.job.* events.
   await newsScheduler.start()
   logger.info('News scheduler started')
 

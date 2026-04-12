@@ -1,5 +1,10 @@
 import type { ChatOpenAI } from '@langchain/openai'
+import logger from '@lib/logger'
 import type { NewsItem } from './types'
+
+// Hard gate for relevance classification. This is independent of delivery-time
+// NEWS_RELEVANCE_THRESHOLD filtering in NewsStore/NewsScheduler.
+const relevanceScoreThreshold = 70
 
 export class RelevanceDetector {
   private readonly model: ChatOpenAI
@@ -51,12 +56,30 @@ Score:`
       const score = match
         ? Math.min(100, Math.max(0, parseInt(match[0], 10)))
         : 50
+      const isRelevant = score >= relevanceScoreThreshold
+
+      logger.debug({
+        event: 'news.score.result',
+        itemId: item.id,
+        itemTitle: item.title,
+        score,
+        isRelevant,
+        threshold: relevanceScoreThreshold,
+      })
+
       return {
         score,
-        isRelevant: score >= 70,
+        isRelevant,
       }
     } catch (error) {
-      console.error('Relevance detection failed:', error)
+      logger.error({
+        event: 'news.score.error',
+        itemId: item.id,
+        itemTitle: item.title,
+        threshold: relevanceScoreThreshold,
+        err: error,
+      })
+
       return { score: 0, isRelevant: false }
     }
   }
@@ -65,6 +88,13 @@ Score:`
     items: NewsItem[]
   ): Promise<Map<string, { score: number; isRelevant: boolean }>> {
     const results = new Map<string, { score: number; isRelevant: boolean }>()
+
+    logger.debug({
+      event: 'news.score.start',
+      unscoredCount: items.length,
+      threshold: relevanceScoreThreshold,
+    })
+
     await Promise.all(
       items.map(async (item) => {
         const result = await this.detectRelevance(item)

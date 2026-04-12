@@ -1,4 +1,5 @@
 import { extract } from '@extractus/feed-extractor'
+import logger from '@lib/logger'
 import type { NewsItem } from './types'
 
 export interface FeedEntry {
@@ -15,15 +16,11 @@ export class FeedReader {
   async fetchFeed(url: string): Promise<NewsItem[]> {
     try {
       const feed = await extract(url)
-
-      if (!feed?.entries) {
-        return []
-      }
-
       const items: NewsItem[] = []
       const now = new Date()
+      const entries = feed?.entries ?? []
 
-      for (const entry of feed.entries) {
+      for (const entry of entries) {
         const feedEntry = entry as unknown as FeedEntry
         const link = feedEntry.link || ''
 
@@ -39,7 +36,9 @@ export class FeedReader {
           description: feedEntry.description,
           content: undefined,
           url: link,
-          publishedAt: feedEntry.published ? new Date(feedEntry.published) : now,
+          publishedAt: feedEntry.published
+            ? new Date(feedEntry.published)
+            : now,
           fetchedAt: now,
         }
 
@@ -47,18 +46,48 @@ export class FeedReader {
         this.seenUrls.add(link)
       }
 
+      logger.debug(
+        {
+          event: 'news.feed.fetch.success',
+          feedUrl: url,
+          itemCount: items.length,
+        },
+        'Fetched news feed'
+      )
+
       return items
     } catch (error) {
-      console.error(`Failed to fetch feed ${url}:`, error)
+      logger.error(
+        {
+          event: 'news.feed.fetch.error',
+          feedUrl: url,
+          itemCount: 0,
+          error: error instanceof Error ? error.message : String(error),
+          err: error,
+        },
+        'Failed to fetch news feed'
+      )
+
       return []
     }
   }
 
   async fetchAllFeeds(urls: string[]): Promise<NewsItem[]> {
-    const results = await Promise.all(
-      urls.map((url) => this.fetchFeed(url))
+    const results = await Promise.all(urls.map((url) => this.fetchFeed(url)))
+    const items = results
+      .flat()
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+
+    logger.debug(
+      {
+        event: 'news.feed.fetch.aggregate',
+        feedCount: urls.length,
+        itemCount: items.length,
+      },
+      'Fetched all news feeds'
     )
-    return results.flat().sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+
+    return items
   }
 
   markSeen(url: string): void {

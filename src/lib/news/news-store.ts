@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import logger from '@lib/logger'
 import type { NewsItem } from './types'
 
 export class NewsStore {
@@ -9,8 +10,40 @@ export class NewsStore {
     this.redis = redis
   }
 
-  async storeItem(item: NewsItem): Promise<void> {
+  async storeItem(item: NewsItem): Promise<boolean> {
     const key = `${this.keyPrefix}item:${item.id}`
+
+    const existingItem = await this.redis.get(key)
+    const existedBefore = existingItem !== null
+
+    if (existedBefore) {
+      logger.debug(
+        {
+          event: 'news.item.duplicate_skip',
+          itemId: item.id,
+          itemUrl: item.url,
+        },
+        'Skipped duplicate news item storage'
+      )
+
+      return false
+    }
+
+    await this.writeItem(key, item)
+
+    logger.debug(
+      {
+        event: 'news.item.store',
+        itemId: item.id,
+        itemUrl: item.url,
+      },
+      'Stored news item'
+    )
+
+    return true
+  }
+
+  private async writeItem(key: string, item: NewsItem): Promise<void> {
     await this.redis.setex(key, 7 * 24 * 60 * 60, JSON.stringify(item))
     await this.redis.zadd(
       `${this.keyPrefix}items`,
@@ -51,8 +84,7 @@ export class NewsStore {
         item &&
         item.isRelevant &&
         !item.legacyBroadcastedAt &&
-        item.relevanceScore &&
-        item.relevanceScore >= threshold
+        this.passesDeliveryThreshold(item, threshold)
       ) {
         items.push(item)
       }
@@ -70,8 +102,7 @@ export class NewsStore {
       if (
         item &&
         item.isRelevant &&
-        item.relevanceScore !== undefined &&
-        item.relevanceScore >= threshold
+        this.passesDeliveryThreshold(item, threshold)
       ) {
         items.push(item)
       }
@@ -89,7 +120,7 @@ export class NewsStore {
     if (item) {
       item.relevanceScore = score
       item.isRelevant = isRelevant
-      await this.storeItem(item)
+      await this.writeItem(`${this.keyPrefix}item:${item.id}`, item)
     }
   }
 
@@ -97,7 +128,7 @@ export class NewsStore {
     const item = await this.getItem(id)
     if (item) {
       item.legacyBroadcastedAt = new Date()
-      await this.storeItem(item)
+      await this.writeItem(`${this.keyPrefix}item:${item.id}`, item)
     }
   }
 
@@ -119,5 +150,12 @@ export class NewsStore {
         ? new Date(item.legacyBroadcastedAt)
         : undefined,
     }
+  }
+
+  private passesDeliveryThreshold(item: NewsItem, threshold: number): boolean {
+    // Delivery-time thresholding is a second gate. Items still need
+    // `isRelevant === true`, which is assigned earlier by RelevanceDetector's
+    // hardcoded `score >= 70` rule.
+    return item.relevanceScore !== undefined && item.relevanceScore >= threshold
   }
 }
