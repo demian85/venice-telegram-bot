@@ -189,7 +189,7 @@ export function createRecentNewsTool(
         }
 
         const lines = [
-          `*Here are the latest ${articles.length} relevant AI news article${articles.length === 1 ? '' : 's'}:*`,
+          `Here are the latest ${articles.length} relevant AI news articles:`,
           '',
         ]
 
@@ -203,14 +203,14 @@ export function createRecentNewsTool(
               (article.description.length > 200 ? '...' : '')
             : ''
 
-          lines.push(`*${index + 1}. ${article.title}*`)
-          lines.push(`📰 *Source:* ${article.source} | 📅 ${publishedStr}`)
+          lines.push(`${index + 1}. ${article.title}`)
+          lines.push(`Source: ${article.source} | ${publishedStr}`)
           if (description) {
-            lines.push(`${description}`)
+            lines.push(description)
           }
-          lines.push(`🔗 [Read full article](${article.url})`)
+          lines.push(`Read full article: ${article.url}`)
           if (article.relevanceScore !== undefined) {
-            lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
+            lines.push(`Relevance: ${article.relevanceScore}/100`)
           }
           lines.push('')
         })

@@ -1,76 +1,52 @@
-const PLACEHOLDER_PREFIX = '\x00PLACEHOLDER_'
-const PLACEHOLDER_SUFFIX = '_\x00'
+const PLACEHOLDER_PREFIX = '§PLH§'
+const PLACEHOLDER_SUFFIX = '§END§'
 
 /**
  * Escape special characters that would be interpreted as Markdown in Telegram.
- * Only escapes characters that are NOT part of intentional formatting.
- *
- * Telegram Markdown (legacy) supports:
- * - *bold text*
- * - _italic text_
- * - `inline fixed-width code`
- * - ```pre-formatted fixed-width code block```
- * - [text](URL)
- *
- * This function escapes markdown characters in plain text content to prevent
- * accidental formatting while preserving intentional markdown syntax.
+ * Preserves intentional formatting by protecting it with placeholders first.
  */
 export function escapeMarkdown(text: string): string {
   if (!text) return ''
 
   const placeholders: string[] = []
-  let placeholderCounter = 0
+  let counter = 0
 
-  // Create a unique placeholder that won't appear in normal text
-  const createPlaceholder = (): string => {
-    const id = placeholderCounter++
+  const save = (match: string): string => {
+    const id = counter++
+    placeholders[id] = match
     return `${PLACEHOLDER_PREFIX}${id}${PLACEHOLDER_SUFFIX}`
   }
 
-  // Protect inline code first (must be before other patterns)
-  let protectedText = text.replace(/`([^`]+)`/g, (match) => {
-    placeholders.push(match)
-    return createPlaceholder()
-  })
+  const restore = (_match: string, id: string): string => {
+    return placeholders[parseInt(id, 10)] || ''
+  }
 
-  // Protect links
-  protectedText = protectedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match) => {
-    placeholders.push(match)
-    return createPlaceholder()
-  })
+  // Step 1: Protect intentional formatting patterns
+  let result = text
+    .replace(/`[^`]+`/g, save)
+    .replace(/\[[^\]]+\]\([^)]+\)/g, save)
+    .replace(/\*[^*]+\*/g, save)
+    .replace(/_[^_]+_/g, save)
 
-  // Protect bold text
-  protectedText = protectedText.replace(/\*([^*]+)\*/g, (match) => {
-    placeholders.push(match)
-    return createPlaceholder()
-  })
-
-  // Protect italic text
-  protectedText = protectedText.replace(/_([^_]+)_/g, (match) => {
-    placeholders.push(match)
-    return createPlaceholder()
-  })
-
-  // Now escape any remaining markdown characters in plain text
-  protectedText = protectedText
+  // Step 2: Escape remaining markdown characters
+  result = result
+    .replace(/\\/g, '\\\\')
     .replace(/\*/g, '\\*')
     .replace(/_/g, '\\_')
-    .replace(/`/g, '\\`')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
+    .replace(/`/g, '\\`')
 
-  // Restore placeholders
-  const placeholderRegex = new RegExp(
+  // Step 3: Restore protected patterns
+  const restoreRegex = new RegExp(
     `${PLACEHOLDER_PREFIX}([0-9]+)${PLACEHOLDER_SUFFIX}`,
     'g'
   )
-  protectedText = protectedText.replace(placeholderRegex, (_, index) => {
-    return placeholders[parseInt(index, 10)] || ''
-  })
+  result = result.replace(restoreRegex, restore)
 
-  return protectedText
+  return result
 }
 
 /**

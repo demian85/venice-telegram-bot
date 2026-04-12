@@ -3,6 +3,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import type { MessageContent } from '@langchain/core/messages'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { Redis } from 'ioredis'
+import logger from '../logger.js'
 import type { ConversationMessage } from '../redis/conversation-store.js'
 import { MemoryManager } from '../memory/memory-manager.js'
 import type { MemoryConfig } from '../memory/types.js'
@@ -44,6 +45,11 @@ export class AgentService {
   }
 
   async initialize(): Promise<void> {
+    const toolNames = this.tools.map((t) => t.name).join(', ')
+    logger.info(
+      { toolCount: this.tools.length, toolNames },
+      'Initializing agent with tools'
+    )
     this.agent = createAgent({
       model: this.model,
       tools: this.tools,
