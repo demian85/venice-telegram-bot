@@ -1,239 +1,206 @@
-import { Telegraf, session } from 'telegraf'
+import { Telegraf } from 'telegraf'
 import { message } from 'telegraf/filters'
+import type { MessageEntity } from 'telegraf/typings/core/types/typegram'
+import type { ChatOpenAI } from '@langchain/openai'
+import type { Redis } from 'ioredis'
 import logger from '@lib/logger'
-
-import { Redis } from '@telegraf/session/redis'
-import { ContextWithSession, MessageContext, Session } from './types'
-import commandHandlers from './handlers'
-import { chatCompletion } from '@lib/api'
-import {
-  ChatCompletionContentPart,
-  ChatCompletionMessageParam,
-} from 'openai/resources/chat/completions'
-import { countTokens } from 'gpt-tokenizer'
-import { defaultSession } from './defaults'
-import { Config, ModelData, TextCompletionResponse } from '@lib/types'
-import { generateImageHandler } from './handlers/image'
-import { formatWebCitations, fullMarkdown2TgMarkdown } from './util'
 import { AgentService } from '@lib/agent'
-import { createVeniceModel } from '@lib/agent/model'
 import { allTools } from '@lib/agent/tools'
+import {
+  ChatSubscriptionStore,
+  defaultNewsIntervalSeconds,
+  maxNewsIntervalSeconds,
+  minNewsIntervalSeconds,
+  type NewsChatSubscription,
+} from '@lib/news'
 import { getRedisClient } from '@lib/redis'
+import { getContextChatScope } from './scope'
+import { MessageContext, PhotoMessageContext, TelegramContext } from './types'
+import { Config } from '@lib/types'
+import { formatTelegramMarkdownReply } from './util'
+
+export interface BotModels {
+  agentModel: ChatOpenAI
+  summarizerModel: ChatOpenAI
+}
+
+export interface BotNewsArticle {
+  title: string
+  url: string
+  description?: string
+  relevanceScore: number
+}
+
+interface NormalizedTelegramIngress {
+  text: string
+  imageUrl?: string
+  shouldInvoke: boolean
+}
+
+type BotCommandHandler = (ctx: TelegramContext) => Promise<void> | void
+
+interface BotRuntime {
+  telegram: {
+    setMyCommands(
+      commands: ReadonlyArray<{ command: string; description: string }>
+    ): Promise<unknown>
+    getFileLink(fileId: string): Promise<URL>
+    sendMessage(
+      chatId: string,
+      text: string,
+      extra?: Record<string, unknown>
+    ): Promise<unknown>
+    getChatMember(chatId: number, userId: number): Promise<{ status: string }>
+  }
+  use(
+    middleware: (
+      ctx: TelegramContext,
+      next: () => Promise<void>
+    ) => Promise<unknown>
+  ): void
+  on(updateType: unknown, handler: (ctx: any) => Promise<unknown>): void
+  start(handler: BotCommandHandler): void
+  command(command: string, handler: BotCommandHandler): void
+  launch(callback?: () => void): Promise<unknown>
+  stop(reason?: string): void
+}
+
+export interface BotDependencies {
+  telegraf?: BotRuntime
+  redis?: Redis
+  agentService?: AgentService
+  chatSubscriptionStore?: ChatSubscriptionStore
+}
 
 export class Bot {
   private config
-  private bot
+  private bot: BotRuntime
   private agentService: AgentService | null = null
+  private readonly chatSubscriptionStore: ChatSubscriptionStore
 
-  constructor(config: Config) {
+  private readonly registeredCommands = [
+    {
+      command: 'start',
+      description: 'Show bot overview and status',
+    },
+    {
+      command: 'help',
+      description: 'Show operational commands',
+    },
+    {
+      command: 'abort',
+      description: 'Abort the current operation',
+    },
+    {
+      command: 'clear',
+      description: 'Clear this chat history',
+    },
+    {
+      command: 'info',
+      description: 'Show chat and subscription status',
+    },
+    {
+      command: 'subscribe',
+      description: 'Enable AI news delivery',
+    },
+    {
+      command: 'unsubscribe',
+      description: 'Disable AI news delivery',
+    },
+    {
+      command: 'interval',
+      description: 'Show or set news interval',
+    },
+  ] as const
+
+  constructor(
+    config: Config,
+    models: BotModels,
+    dependencies: BotDependencies = {}
+  ) {
     this.config = config
 
-    this.bot = new Telegraf<ContextWithSession>(process.env.TELEGRAM_BOT_TOKEN!)
+    this.bot =
+      dependencies.telegraf ??
+      new Telegraf<TelegramContext>(process.env.TELEGRAM_BOT_TOKEN!)
 
-    const redisClient = getRedisClient()
+    const redisClient = dependencies.redis ?? getRedisClient()
 
-    this.bot.use(
-      session({
-        store: Redis<Session>({
-          url: process.env.REDIS_URL || 'redis://localhost:6379',
-        }),
-        getSessionKey: (ctx) => {
-          return `telegraf:${ctx.chat?.id ?? ctx.from?.id}`
-        },
-        defaultSession: (_ctx) => defaultSession,
+    this.agentService =
+      dependencies.agentService ??
+      new AgentService({
+        redis: redisClient,
+        agentModel: models.agentModel,
+        summarizerModel: models.summarizerModel,
+        tools: allTools,
       })
-    )
+    this.chatSubscriptionStore =
+      dependencies.chatSubscriptionStore ??
+      new ChatSubscriptionStore(redisClient)
 
-    this.agentService = new AgentService({
-      redis: redisClient,
-      model: createVeniceModel(),
-      tools: allTools,
-    })
+    this.bot.use(async (ctx, next) => {
+      const scope = getContextChatScope(ctx)
 
-    this.bot.use(async (ctx, _next) => {
-      if (ctx.chat?.type !== 'private' && ctx.chat?.type !== 'group') {
+      if (!scope) {
         throw new Error('Chat type not supported')
       }
 
-      ctx.chatType = ctx.chat?.type === 'private' ? 'private' : 'group'
+      ctx.chatType = scope.chatType
+      ctx.chatScope = scope.chatScope
 
       const whitelistedUsers = this.config.telegram.whitelistedUsers
+      const privateChat = ctx.chat?.type === 'private' ? ctx.chat : null
 
       if (
-        ctx.chat.type === 'private' &&
-        (!ctx.chat?.username ||
+        privateChat &&
+        (!privateChat.username ||
           (whitelistedUsers.length > 0 &&
-            !whitelistedUsers.includes(ctx.chat?.username)))
+            !whitelistedUsers.includes(privateChat.username)))
       ) {
         await ctx.reply('Forbidden: username is not whitelisted')
         throw new Error('Forbidden: username is not whitelisted')
       }
 
-      if (ctx.updateType === 'message' && ctx.message) {
-        const messageCtx = ctx as MessageContext
-        const commandEntity = messageCtx.message.entities?.find(
-          (item) => item.type === 'bot_command' && item.offset === 0
-        )
-        const rawMessageText = messageCtx.message.text ?? ''
-        const isMention = !!messageCtx.message.entities?.find(
-          (v) =>
-            v.type === 'mention' &&
-            rawMessageText.substring(v.offset, v.length) ===
-              this.config.telegram.botUsername
-        )
-
-        ctx.isMention = isMention
-
-        if (rawMessageText) {
-          const messageText = commandEntity
-            ? rawMessageText.substring(commandEntity.length).trim()
-            : rawMessageText.trim()
-
-          const userName =
-            messageCtx.message.from.first_name ??
-            messageCtx.message.from.username
-          const parsedMessageText = isMention
-            ? messageText
-                .substring(this.config.telegram.botUsername.length)
-                .trim()
-            : messageText
-
-          ctx.parsedMessageText =
-            ctx.chatType === 'group' && parsedMessageText
-              ? `${userName}: ${parsedMessageText}`
-              : parsedMessageText
-        }
-      }
+      ctx.isMention = this.isMentioned(ctx)
+      ctx.parsedMessageText = this.getParsedMessageText(ctx)
 
       logger.debug(
         {
           message: ctx.message,
-          session: ctx.session,
           update: ctx.update,
           updateType: ctx.updateType,
           chatType: ctx.chatType,
+          chatScope: ctx.chatScope,
           isMention: ctx.isMention,
           parsedMessageText: ctx.parsedMessageText,
         },
         'Middleware call'
       )
 
-      return _next()
+      return next()
     })
 
     this.buildCommands()
 
     this.bot.on(message('text'), async (ctx) => {
       if (!ctx.message.text.trim()) {
-        return ctx.reply(`/help`)
+        return ctx.reply('/help')
       }
 
       const isCommand =
-        ctx.message.entities?.find((v) => v.type === 'bot_command')?.offset ===
-        0
+        ctx.message.entities?.find(
+          (entity: MessageEntity) => entity.type === 'bot_command'
+        )?.offset === 0
 
       if (isCommand) {
-        return ctx.reply(`Unknown command. /help`)
+        return ctx.reply('Unknown command. /help')
       }
 
-      const cmd = ctx.session.currentCommand
-
-      if (cmd !== null) {
-        const cmdId = cmd.id as keyof typeof commandHandlers
-        const handler = commandHandlers?.[cmdId].message[cmd.step]
-        if (!handler) {
-          return ctx.reply(`/help`)
-        }
-        return commandHandlers?.[cmdId].message[cmd.step](ctx)
-      }
-
-      if (ctx.parsedMessageText) {
-        this.addAndTruncateTextChatHistory(ctx, {
-          role: 'user',
-          content: ctx.parsedMessageText,
-        })
-      }
-
-      if (
-        (ctx.chatType === 'group' && ctx.isMention) ||
-        ctx.chatType === 'private'
-      ) {
-        await this.handleAgentTextCompletion(ctx)
-      }
+      await this.handleIncomingMessage(ctx)
     })
 
     this.bot.on(message('photo'), async (ctx) => {
-      if (ctx.session.currentCommand) {
-        return ctx.reply(`/help`)
-      }
-
-      const photo = ctx.message.photo
-      const bestPhoto = photo.find(
-        (item) => item.width >= 240 && item.height >= 240
-      )
-
-      if (!bestPhoto) {
-        if (ctx.chatType === 'private') {
-          await ctx.reply(`Photo is too small.`)
-        }
-        return
-      }
-
-      const caption = ctx.message.caption
-      const botMention =
-        caption &&
-        ctx.message.caption_entities?.find(
-          (v) =>
-            v.type === 'mention' &&
-            caption?.substring(0, v.length) === this.config.telegram.botUsername
-        )
-      const filteredCaption = botMention
-        ? caption.substring(botMention.length).trim()
-        : caption
-      const content: ChatCompletionContentPart[] = filteredCaption
-        ? [
-            {
-              type: 'text',
-              text: filteredCaption,
-            },
-          ]
-        : []
-      const fileId = bestPhoto.file_id
-      const fileLink = await ctx.telegram.getFileLink(fileId)
-
-      content.push({
-        type: 'image_url',
-        image_url: { url: fileLink.toString() },
-      })
-
-      this.addAndTruncateTextChatHistory(ctx, {
-        role: 'user',
-        content,
-      })
-
-      if (
-        (ctx.chatType === 'group' && caption && botMention) ||
-        ctx.chatType === 'private'
-      ) {
-        await this.handleTextCompletion(ctx)
-      }
-    })
-
-    this.bot.on('callback_query', async (ctx) => {
-      const cmd = ctx.session.currentCommand
-
-      if (!cmd) {
-        return ctx.answerCbQuery('Invalid callback')
-      }
-
-      const cmdId = cmd.id as keyof typeof commandHandlers
-      const handler = commandHandlers?.[cmdId].callbackQuery[cmd.step]
-
-      if (handler) {
-        return handler(ctx)
-      }
-
-      return ctx.answerCbQuery('Invalid callback')
+      await this.handleIncomingMessage(ctx)
     })
 
     this.bot.on('inline_query', async (ctx) => {
@@ -245,276 +212,492 @@ export class Bot {
   }
 
   async init() {
+    await this.bot.telegram.setMyCommands(this.registeredCommands)
     await this.agentService?.initialize()
     await this.bot.launch(() => {
       logger.info({ config: this.config }, 'Telegram bot is up and running')
     })
   }
 
-  private buildCommands() {
-    type CommandContext = Parameters<typeof this.bot.command>[2]
+  async sendNewsArticle(
+    chatId: string,
+    article: BotNewsArticle
+  ): Promise<void> {
+    const lines = [
+      '*Relevant AI news*',
+      `*${this.escapeMarkdown(article.title)}*`,
+      `[Read more](${article.url})`,
+      `Relevance score: ${article.relevanceScore}`,
+    ]
 
-    const commands: Record<string, CommandContext> = {
-      help: async (ctx) =>
-        await ctx.reply(
-          `Available commands: ${Object.keys(commands)
-            .map((cmd) => `/${cmd}`)
-            .join(', ')}`
-        ),
+    if (article.description) {
+      lines.splice(2, 0, this.escapeMarkdown(article.description))
+    }
+
+    await this.bot.telegram.sendMessage(chatId, lines.join('\n\n'), {
+      parse_mode: 'Markdown',
+      link_preview_options: {
+        is_disabled: false,
+      },
+    })
+  }
+
+  private buildCommands() {
+    const commands: Record<string, BotCommandHandler> = {
+      help: async (ctx) => {
+        await ctx.reply(await this.buildHelpMessage(ctx))
+      },
       abort: async (ctx) => {
-        ctx.session.currentCommand = null
-        await ctx.reply(`Operation aborted`)
+        await ctx.reply('No interactive operation is running.')
       },
       clear: async (ctx) => {
-        await this.agentService?.clearHistory(ctx.chat?.id?.toString() || '')
-        ctx.session.textModelHistory = []
-        ctx.session.codeModelHistory = []
-        await ctx.reply(`Chat history deleted. Starting a new chat...`)
-      },
-      config: async (ctx) => {
-        if (ctx.session.currentCommand) {
-          ctx.session.currentCommand = null
-          await ctx.reply(`Previous command aborted`)
-        }
-        await commandHandlers.config.message[0](ctx)
+        await this.agentService?.clearHistory(ctx.chatScope)
+        await ctx.reply('Chat history deleted. Starting a new chat...')
       },
       info: async (ctx) => {
-        if (ctx.session.currentCommand) {
-          ctx.session.currentCommand = null
-          await ctx.reply(`Previous command aborted`)
-        }
-        const model = ctx.session.config.model || ctx.session.config.textModel
-        await ctx.reply(
-          `Current model: [${model?.id}](${model?.model_spec.modelSource})`.trim(),
-          {
-            parse_mode: 'Markdown',
-            link_preview_options: { is_disabled: true },
-          }
-        )
+        await ctx.reply(await this.buildInfoMessage(ctx))
       },
-      image: async (ctx) => {
-        if (ctx.session.currentCommand) {
-          ctx.session.currentCommand = null
-          await ctx.reply(`Previous command aborted`)
-        }
-        if (ctx.parsedMessageText) {
-          await generateImageHandler(ctx, ctx.parsedMessageText)
-        } else {
-          await commandHandlers.image.message[0](ctx)
-        }
-      },
-      code: async (ctx) => {
-        if (ctx.session.currentCommand) {
-          ctx.session.currentCommand = null
-          await ctx.reply(`Previous command aborted`)
-        }
-        if (!ctx.parsedMessageText) {
-          return ctx.reply('Invalid specifications')
+      subscribe: async (ctx) => {
+        if (!(await this.ensureSubscriptionCommandAccess(ctx, 'subscribe'))) {
+          return
         }
 
-        this.addAndTruncateCodeChatHistory(ctx, {
-          role: 'user',
-          content: ctx.parsedMessageText,
-        })
-        await this.handleCodeCompletion(ctx)
+        const subscription = await this.chatSubscriptionStore.subscribe(
+          this.getSubscriptionChatId(ctx)
+        )
+
+        await ctx.reply(
+          this.buildSubscriptionMutationMessage(
+            'News subscription enabled.',
+            subscription
+          )
+        )
+      },
+      unsubscribe: async (ctx) => {
+        if (!(await this.ensureSubscriptionCommandAccess(ctx, 'unsubscribe'))) {
+          return
+        }
+
+        const subscription = await this.chatSubscriptionStore.unsubscribe(
+          this.getSubscriptionChatId(ctx)
+        )
+
+        await ctx.reply(
+          this.buildSubscriptionMutationMessage(
+            'News subscription disabled.',
+            subscription
+          )
+        )
+      },
+      interval: async (ctx) => {
+        if (!(await this.ensureSubscriptionCommandAccess(ctx, 'interval'))) {
+          return
+        }
+
+        const args = this.getCommandArguments(ctx)
+
+        if (!args) {
+          const subscription = await this.getSubscriptionStatus(
+            this.getSubscriptionChatId(ctx)
+          )
+
+          await ctx.reply(
+            [
+              `Current news interval: ${this.getSubscriptionIntervalSeconds(subscription)} seconds.`,
+              `Subscription status: ${this.getSubscriptionEnabledLabel(subscription)}.`,
+              `Use /interval <seconds> to change it (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds}).`,
+            ].join('\n')
+          )
+          return
+        }
+
+        const intervalSeconds = Number(args)
+
+        if (!Number.isInteger(intervalSeconds)) {
+          await ctx.reply(
+            `News interval must be an integer between ${minNewsIntervalSeconds} and ${maxNewsIntervalSeconds} seconds.`
+          )
+          return
+        }
+
+        try {
+          const subscription =
+            await this.chatSubscriptionStore.setIntervalSeconds(
+              this.getSubscriptionChatId(ctx),
+              intervalSeconds
+            )
+
+          await ctx.reply(
+            this.buildSubscriptionMutationMessage(
+              `News interval updated to ${subscription.intervalSeconds} seconds.`,
+              subscription
+            )
+          )
+        } catch (error) {
+          await ctx.reply(
+            error instanceof Error
+              ? error.message
+              : 'Failed to update the news interval.'
+          )
+        }
       },
     }
 
-    this.bot.start((ctx) => ctx.reply(`Ask me anything!`))
+    this.bot.start(async (ctx) => {
+      await ctx.reply(await this.buildStartMessage(ctx))
+    })
 
     Object.entries(commands).forEach(([cmd, handler]) => {
       this.bot.command(cmd, handler)
     })
   }
 
-  private async handleAgentTextCompletion(
-    ctx: ContextWithSession
-  ): Promise<void> {
-    const chatId = ctx.chat?.id?.toString()
-    if (!chatId || !this.agentService) {
+  private async handleAgentTextCompletion(ctx: TelegramContext): Promise<void> {
+    if (!this.agentService) {
       return
     }
 
-    await ctx.sendChatAction('typing')
+    const normalizedMessage = await this.normalizeIncomingMessage(ctx)
+
+    if (!normalizedMessage) {
+      return
+    }
+
+    if (!normalizedMessage.shouldInvoke) {
+      await this.agentService.persistUserMessage(
+        ctx.chatScope,
+        normalizedMessage
+      )
+      return
+    }
+
+    if (normalizedMessage.imageUrl && !this.agentService.supportsImageInput()) {
+      await this.agentService.persistUserMessage(
+        ctx.chatScope,
+        normalizedMessage
+      )
+      await ctx.reply(
+        "This bot's main model cannot inspect images yet. I saved your message context, but I cannot answer about the attached image right now."
+      )
+      return
+    }
+
+    await ctx.sendChatAction(
+      normalizedMessage.imageUrl ? 'upload_photo' : 'typing'
+    )
 
     try {
-      const response = await this.agentService.invoke(
-        chatId,
-        ctx.parsedMessageText || ''
+      const response = await this.agentService.invokeLive(
+        ctx.chatScope,
+        normalizedMessage
       )
-      await ctx.reply(response, { parse_mode: 'Markdown' })
+      await ctx.reply(formatTelegramMarkdownReply(response), {
+        parse_mode: 'Markdown',
+      })
     } catch (error) {
-      logger.error({ error, chatId }, 'Agent completion error')
+      logger.error(
+        { error, chatScope: ctx.chatScope },
+        'Agent completion error'
+      )
       await ctx.reply('Sorry, I encountered an error. Please try again.')
     }
   }
 
-  private async handleTextCompletion(ctx: ContextWithSession): Promise<void> {
-    const model = ctx.session.config.model || ctx.session.config.textModel
-    if (!model) {
-      await ctx.reply(
-        'No model configured. Please use /config to select a model.'
-      )
-      return
-    }
-    const messages = this.getBaseChatHistory(ctx)
-    const systemPromptText = messages?.[0].content?.toString() ?? ''
-    messages.push(
-      ...this.getTruncatedChatHistory(
-        ctx.session.textModelHistory,
-        model,
-        -countTokens(systemPromptText)
-      )
-    )
-
-    await ctx.sendChatAction('typing')
-
-    const completionResponse = await chatCompletion({
-      model: model.id,
-      messages,
-      venice_parameters: {
-        enable_web_search: 'auto',
-        strip_thinking_response: true,
-      },
-    })
-    const completionText = completionResponse.choices?.[0].message.content
-
-    await this.replyWithCitations(ctx, completionResponse)
-
-    if (completionText) {
-      ctx.session.textModelHistory.push({
-        role: 'assistant',
-        content: completionText,
-      })
-    }
+  private escapeMarkdown(text: string): string {
+    return text.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1')
   }
 
-  private async handleCodeCompletion(ctx: ContextWithSession): Promise<void> {
-    const model = ctx.session.config.codingModel || ctx.session.config.model
-    if (!model) {
-      await ctx.reply(
-        'No model configured. Please use /config to select a model.'
-      )
-      return
-    }
-    const messages = this.getBaseChatHistory(ctx)
-    const systemPromptText = messages?.[0].content?.toString() ?? ''
-    messages.push(
-      ...this.getTruncatedChatHistory(
-        ctx.session.codeModelHistory,
-        model,
-        -countTokens(systemPromptText)
-      )
-    )
-
-    await ctx.sendChatAction('typing')
-
-    const completionResponse = await chatCompletion({
-      model: model.id,
-      messages,
-      venice_parameters: {
-        enable_web_search: model.model_spec.capabilities?.supportsWebSearch
-          ? 'auto'
-          : undefined,
-        strip_thinking_response:
-          model.model_spec.capabilities?.supportsReasoning,
-      },
-    })
-    const completionText = completionResponse.choices?.[0].message.content
-
-    await this.replyWithCitations(ctx, completionResponse)
-
-    if (completionText) {
-      ctx.session.codeModelHistory.push({
-        role: 'assistant',
-        content: completionText,
-      })
-    }
-  }
-
-  private async replyWithCitations(
-    ctx: ContextWithSession,
-    completionResponse: TextCompletionResponse
+  private async handleIncomingMessage(
+    ctx: MessageContext | PhotoMessageContext
   ): Promise<void> {
-    const completionText = completionResponse.choices?.[0].message.content
-
-    if (ctx.chatType === 'private') {
-      await ctx.reply(
-        `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
-        { parse_mode: 'Markdown' }
-      )
-    } else if (ctx.chatType === 'group') {
-      await ctx.reply(
-        `${fullMarkdown2TgMarkdown(completionText ?? '')}${formatWebCitations(completionResponse)}`,
-        { parse_mode: 'Markdown' }
-      )
-    }
+    await this.handleAgentTextCompletion(ctx)
   }
 
-  private getBaseChatHistory(
-    ctx: ContextWithSession
-  ): ChatCompletionMessageParam[] {
-    const userName = ctx.from?.first_name ?? ctx.from?.username ?? 'User'
-    const isGroup = ctx.chatType === 'group'
-    const systemPrompt = isGroup
-      ? this.config.ia.groupChatSystemPrompt.replace('', userName)
-      : this.config.ia.privateChatSystemPrompt.replace('', userName)
-
-    return [{ role: 'system', content: systemPrompt }]
-  }
-
-  private addAndTruncateTextChatHistory(
-    ctx: ContextWithSession,
-    message: ChatCompletionMessageParam
-  ): void {
-    ctx.session.textModelHistory.push(message)
-    const maxLength = this.config.telegram.maxSessionMessages
-    if (ctx.session.textModelHistory.length > maxLength) {
-      ctx.session.textModelHistory =
-        ctx.session.textModelHistory.slice(-maxLength)
-    }
-  }
-
-  private addAndTruncateCodeChatHistory(
-    ctx: ContextWithSession,
-    message: ChatCompletionMessageParam
-  ): void {
-    ctx.session.codeModelHistory.push(message)
-    const maxLength = this.config.telegram.maxSessionMessages
-    if (ctx.session.codeModelHistory.length > maxLength) {
-      ctx.session.codeModelHistory =
-        ctx.session.codeModelHistory.slice(-maxLength)
-    }
-  }
-
-  private getTruncatedChatHistory(
-    history: ChatCompletionMessageParam[],
-    model: ModelData,
-    tokenOffset: number
-  ): ChatCompletionMessageParam[] {
-    const maxTokens = model.model_spec.availableContextTokens
-
-    if (!maxTokens) {
-      return history
+  private getParsedMessageText(ctx: TelegramContext): string | undefined {
+    if (ctx.updateType !== 'message' || !ctx.message) {
+      return undefined
     }
 
-    const availableTokens = maxTokens + tokenOffset
-    const result: ChatCompletionMessageParam[] = []
-    let currentTokens = 0
+    const rawMessageText = this.getRawMessageText(ctx)
 
-    for (let i = history.length - 1; i >= 0; i--) {
-      const message = history[i]
-      const content = message.content?.toString() ?? ''
-      const tokens = countTokens(content)
+    if (!rawMessageText) {
+      return undefined
+    }
 
-      if (currentTokens + tokens > availableTokens) {
-        break
+    const withoutCommand = this.stripLeadingCommand(
+      rawMessageText,
+      this.getMessageEntities(ctx)
+    )
+    const normalizedText = this.stripExplicitBotMentions(withoutCommand)
+
+    if (!normalizedText) {
+      return undefined
+    }
+
+    if (ctx.chatType !== 'group') {
+      return normalizedText
+    }
+
+    const userName =
+      ctx.message.from.first_name ?? ctx.message.from.username ?? 'User'
+
+    return `${userName}: ${normalizedText}`
+  }
+
+  private getRawMessageText(ctx: TelegramContext): string {
+    if (ctx.updateType !== 'message' || !ctx.message) {
+      return ''
+    }
+
+    if ('text' in ctx.message && typeof ctx.message.text === 'string') {
+      return ctx.message.text.trim()
+    }
+
+    if ('caption' in ctx.message && typeof ctx.message.caption === 'string') {
+      return ctx.message.caption.trim()
+    }
+
+    return ''
+  }
+
+  private getMessageEntities(ctx: TelegramContext): MessageEntity[] {
+    if (ctx.updateType !== 'message' || !ctx.message) {
+      return []
+    }
+
+    if ('entities' in ctx.message && Array.isArray(ctx.message.entities)) {
+      return ctx.message.entities
+    }
+
+    if (
+      'caption_entities' in ctx.message &&
+      Array.isArray(ctx.message.caption_entities)
+    ) {
+      return ctx.message.caption_entities
+    }
+
+    return []
+  }
+
+  private isMentioned(ctx: TelegramContext): boolean {
+    const rawMessageText = this.getRawMessageText(ctx)
+
+    if (!rawMessageText || ctx.chatType !== 'group') {
+      return false
+    }
+
+    return this.getMessageEntities(ctx).some(
+      (entity) =>
+        entity.type === 'mention' &&
+        rawMessageText.substring(
+          entity.offset,
+          entity.offset + entity.length
+        ) === this.config.telegram.botUsername
+    )
+  }
+
+  private stripLeadingCommand(text: string, entities: MessageEntity[]): string {
+    const commandEntity = entities.find(
+      (item) => item.type === 'bot_command' && item.offset === 0
+    )
+
+    return commandEntity ? text.substring(commandEntity.length).trim() : text
+  }
+
+  private stripExplicitBotMentions(text: string): string {
+    if (!this.config.telegram.botUsername) {
+      return text.trim()
+    }
+
+    const escapedBotUsername = this.config.telegram.botUsername.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&'
+    )
+
+    return text
+      .replace(new RegExp(escapedBotUsername, 'g'), ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private async normalizeIncomingMessage(
+    ctx: TelegramContext
+  ): Promise<NormalizedTelegramIngress | null> {
+    if (ctx.updateType !== 'message' || !ctx.message) {
+      return null
+    }
+
+    const text = ctx.parsedMessageText?.trim() ?? ''
+    const shouldInvoke = ctx.chatType === 'private' || ctx.isMention
+
+    if ('photo' in ctx.message && Array.isArray(ctx.message.photo)) {
+      const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1]
+
+      if (!largestPhoto) {
+        return text ? { text, shouldInvoke } : null
       }
 
-      currentTokens += tokens
-      result.unshift(message)
+      const imageUrl = (
+        await ctx.telegram.getFileLink(largestPhoto.file_id)
+      ).toString()
+
+      return {
+        text,
+        imageUrl,
+        shouldInvoke,
+      }
     }
 
-    return result
+    if (!text) {
+      return null
+    }
+
+    return {
+      text,
+      shouldInvoke,
+    }
+  }
+
+  private async buildStartMessage(ctx: TelegramContext): Promise<string> {
+    const subscription = await this.getSubscriptionStatus(
+      this.getSubscriptionChatId(ctx)
+    )
+
+    return [
+      'Venice Bot is ready.',
+      this.getIngressSummary(ctx),
+      this.getSubscriptionSummary(subscription),
+      'Use /help for the operational command list.',
+    ].join('\n\n')
+  }
+
+  private async buildHelpMessage(ctx: TelegramContext): Promise<string> {
+    const subscription = await this.getSubscriptionStatus(
+      this.getSubscriptionChatId(ctx)
+    )
+    const adminScopeNote =
+      ctx.chatType === 'group'
+        ? 'In groups, /subscribe, /unsubscribe, and /interval require an admin.'
+        : 'In private chats, /subscribe, /unsubscribe, and /interval are self-service.'
+
+    return [
+      'Operational commands:',
+      '/start - show a quick overview for this chat',
+      '/help - show commands, ingress behavior, and news status',
+      '/abort - abort the current interactive operation',
+      '/clear - clear stored conversation history for this chat scope',
+      '/info - show chat scope and subscription details',
+      '/subscribe - enable relevant AI news delivery for this chat',
+      '/unsubscribe - disable relevant AI news delivery for this chat',
+      `/interval [seconds] - show or set the news cadence (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds})`,
+      '',
+      this.getIngressSummary(ctx),
+      adminScopeNote,
+      this.getSubscriptionSummary(subscription),
+    ].join('\n')
+  }
+
+  private async buildInfoMessage(ctx: TelegramContext): Promise<string> {
+    const subscription = await this.getSubscriptionStatus(
+      this.getSubscriptionChatId(ctx)
+    )
+
+    return [
+      `Chat scope: ${ctx.chatScope}`,
+      `Chat type: ${ctx.chatType}`,
+      this.getIngressSummary(ctx),
+      this.getSubscriptionSummary(subscription),
+      `Interval limits: ${minNewsIntervalSeconds}-${maxNewsIntervalSeconds} seconds.`,
+    ].join('\n')
+  }
+
+  private getIngressSummary(ctx: TelegramContext): string {
+    return ctx.chatType === 'private'
+      ? 'Ingress: private chats invoke the agent directly on each text or photo message.'
+      : 'Ingress: group text and photo messages are persisted for shared memory, and the agent only replies when the bot is explicitly mentioned.'
+  }
+
+  private getSubscriptionSummary(
+    subscription: NewsChatSubscription | null
+  ): string {
+    return [
+      `News subscription: ${this.getSubscriptionEnabledLabel(subscription)}.`,
+      `News interval: ${this.getSubscriptionIntervalSeconds(subscription)} seconds.`,
+    ].join('\n')
+  }
+
+  private buildSubscriptionMutationMessage(
+    heading: string,
+    subscription: NewsChatSubscription
+  ): string {
+    return [heading, this.getSubscriptionSummary(subscription)].join('\n')
+  }
+
+  private async ensureSubscriptionCommandAccess(
+    ctx: TelegramContext,
+    command: 'subscribe' | 'unsubscribe' | 'interval'
+  ): Promise<boolean> {
+    if (ctx.chatType === 'private') {
+      return true
+    }
+
+    const chatId = ctx.chat?.id
+    const userId = ctx.from?.id
+
+    if (chatId === undefined || userId === undefined) {
+      await ctx.reply(`Only group admins can use /${command} in groups.`)
+      return false
+    }
+
+    try {
+      const member = await ctx.telegram.getChatMember(chatId, userId)
+
+      if (member.status === 'administrator' || member.status === 'creator') {
+        return true
+      }
+    } catch (error) {
+      logger.warn(
+        { error, chatId, userId, command },
+        'Failed to verify Telegram admin access'
+      )
+      await ctx.reply(
+        `I could not verify admin access for /${command}. Please try again.`
+      )
+      return false
+    }
+
+    await ctx.reply(`Only group admins can use /${command} in groups.`)
+    return false
+  }
+
+  private getSubscriptionChatId(ctx: TelegramContext): string {
+    return String(ctx.chat?.id)
+  }
+
+  private async getSubscriptionStatus(
+    chatId: string
+  ): Promise<NewsChatSubscription | null> {
+    return await this.chatSubscriptionStore.getSubscription(chatId)
+  }
+
+  private getSubscriptionEnabledLabel(
+    subscription: NewsChatSubscription | null
+  ): 'enabled' | 'disabled' {
+    return subscription?.enabled ? 'enabled' : 'disabled'
+  }
+
+  private getSubscriptionIntervalSeconds(
+    subscription: NewsChatSubscription | null
+  ): number {
+    return subscription?.intervalSeconds ?? defaultNewsIntervalSeconds
+  }
+
+  private getCommandArguments(ctx: TelegramContext): string {
+    return this.stripExplicitBotMentions(
+      this.stripLeadingCommand(
+        this.getRawMessageText(ctx),
+        this.getMessageEntities(ctx)
+      )
+    )
   }
 }

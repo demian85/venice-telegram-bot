@@ -34,6 +34,13 @@ export class MemoryManager {
     await this.checkAndGenerateSummaries(chatId)
   }
 
+  async getConversationHistory(
+    chatId: string,
+    limit?: number
+  ): Promise<ConversationMessage[]> {
+    return this.conversationStore.getHistory(chatId, limit)
+  }
+
   async getContextWindow(chatId: string): Promise<HierarchicalContext> {
     const recentMessages = await this.conversationStore.getHistory(
       chatId,
@@ -213,6 +220,9 @@ export class MemoryManager {
   }
 
   async clearHistory(chatId: string): Promise<void> {
-    await this.conversationStore.clearHistory(chatId)
+    await Promise.all([
+      this.conversationStore.clearHistory(chatId),
+      this.summaryStore.clearSummaries(chatId),
+    ])
   }
 }

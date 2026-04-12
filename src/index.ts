@@ -5,7 +5,7 @@ import logger from '@lib/logger'
 import { Config } from '@lib/types'
 import { getRedisClient, closeRedisClient } from '@lib/redis'
 import { NewsScheduler } from '@lib/news'
-import { createVeniceModel } from '@lib/agent/model'
+import { createVeniceRoleModels } from '@lib/agent/model'
 import { defaultNewsConfig } from '@lib/news/types'
 
 async function loadConfig(): Promise<Config> {
@@ -21,9 +21,12 @@ async function loadConfig(): Promise<Config> {
 async function main() {
   const config = await loadConfig()
   const redis = getRedisClient()
-  const model = createVeniceModel()
+  const models = createVeniceRoleModels()
 
-  const bot = new Bot(config)
+  const bot = new Bot(config, {
+    agentModel: models.chat,
+    summarizerModel: models.summarizer,
+  })
   await bot.init()
 
   const newsFeeds = process.env.DEFAULT_FEEDS
@@ -32,7 +35,7 @@ async function main() {
 
   const newsScheduler = new NewsScheduler({
     redis,
-    model,
+    model: models.newsRelevance,
     newsConfig: {
       ...defaultNewsConfig,
       feeds: newsFeeds,
@@ -45,8 +48,9 @@ async function main() {
         10
       ),
     },
-    onRelevantArticle: async (article) => {
-      logger.info({ article }, 'Relevant article detected')
+    onDeliverArticle: async ({ chatId, article }) => {
+      await bot.sendNewsArticle(chatId, article)
+      logger.info({ chatId, article }, 'Relevant article delivered')
     },
   })
 

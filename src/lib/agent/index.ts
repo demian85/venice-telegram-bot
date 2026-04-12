@@ -1,38 +1,44 @@
 import { createAgent, type ReactAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
+import type { MessageContent } from '@langchain/core/messages'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { Redis } from 'ioredis'
-import {
-  ConversationStore,
-  type ConversationMessage,
-} from '../redis/conversation-store'
+import type { ConversationMessage } from '../redis/conversation-store'
 import { MemoryManager } from '../memory/memory-manager'
 import type { MemoryConfig } from '../memory/types'
+import { modelSupportsVision } from './model'
+import {
+  buildLiveUserContent,
+  buildPersistedTextShadow,
+  extractTextContent,
+  type AgentLiveInvocationInput,
+} from './content'
 
 export interface AgentServiceConfig {
   redis: Redis
-  model: ChatOpenAI
+  agentModel: ChatOpenAI
+  summarizerModel: ChatOpenAI
   tools: StructuredTool[]
   systemPrompt?: string
   memoryConfig?: Partial<MemoryConfig>
 }
 
 export class AgentService {
-  private readonly store: ConversationStore
   private readonly memoryManager: MemoryManager
   private readonly model: ChatOpenAI
+  private readonly supportsVision: boolean
   private readonly tools: StructuredTool[]
   private readonly systemPrompt: string
   private agent: ReactAgent | null = null
 
   constructor(config: AgentServiceConfig) {
-    this.store = new ConversationStore(config.redis)
     this.memoryManager = new MemoryManager(
       config.redis,
-      config.model,
+      config.summarizerModel,
       config.memoryConfig
     )
-    this.model = config.model
+    this.model = config.agentModel
+    this.supportsVision = modelSupportsVision(config.agentModel)
     this.tools = config.tools
     this.systemPrompt = config.systemPrompt || this.getDefaultSystemPrompt()
   }
@@ -45,39 +51,64 @@ export class AgentService {
   }
 
   async invoke(chatId: string, message: string): Promise<string> {
+    return this.invokeLive(chatId, { text: message })
+  }
+
+  async persistUserMessage(
+    chatId: string,
+    input: AgentLiveInvocationInput
+  ): Promise<void> {
+    const persistedUserContent = buildPersistedTextShadow(input)
+
+    if (!persistedUserContent) {
+      return
+    }
+
+    await this.memoryManager.addMessage(chatId, {
+      role: 'user',
+      content: persistedUserContent,
+      timestamp: Date.now(),
+    })
+  }
+
+  supportsImageInput(): boolean {
+    return this.supportsVision
+  }
+
+  async invokeLive(
+    chatId: string,
+    input: AgentLiveInvocationInput
+  ): Promise<string> {
     if (!this.agent) {
       throw new Error('Agent not initialized. Call initialize() first.')
     }
 
-    const history = await this.store.getHistory(chatId, 50)
+    const contextWindow = await this.memoryManager.getContextWindow(chatId)
+    const persistedUserContent = buildPersistedTextShadow(input)
+    const liveUserContent = buildLiveUserContent(input, this.supportsVision)
+    const messages = this.buildAgentMessages(
+      contextWindow,
+      liveUserContent,
+      persistedUserContent
+    )
 
-    const messages: ConversationMessage[] = [
-      { role: 'system', content: this.systemPrompt, timestamp: Date.now() },
-      ...history,
-      { role: 'user', content: message, timestamp: Date.now() },
-    ]
-
-    await this.store.addMessage(chatId, {
+    await this.memoryManager.addMessage(chatId, {
       role: 'user',
-      content: message,
+      content: persistedUserContent,
       timestamp: Date.now(),
     })
 
     try {
       const result = await this.agent.invoke({
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages,
       })
 
       const lastMessage = result.messages[result.messages.length - 1]
-      const responseText =
-        typeof lastMessage.content === 'string'
-          ? lastMessage.content
-          : JSON.stringify(lastMessage.content)
+      const responseText = extractTextContent(
+        lastMessage.content as MessageContent
+      )
 
-      await this.store.addMessage(chatId, {
+      await this.memoryManager.addMessage(chatId, {
         role: 'assistant',
         content: responseText,
         timestamp: Date.now(),
@@ -91,11 +122,75 @@ export class AgentService {
   }
 
   async getHistory(chatId: string): Promise<ConversationMessage[]> {
-    return this.store.getHistory(chatId)
+    return this.memoryManager.getConversationHistory(chatId)
   }
 
   async clearHistory(chatId: string): Promise<void> {
-    return this.store.clearHistory(chatId)
+    return this.memoryManager.clearHistory(chatId)
+  }
+
+  private buildAgentMessages(
+    contextWindow: Awaited<ReturnType<MemoryManager['getContextWindow']>>,
+    liveUserContent: MessageContent,
+    persistedUserContent: string
+  ): Array<{ role: 'system' | 'user' | 'assistant'; content: MessageContent }> {
+    const summaryContext = this.formatSummaryContext(contextWindow)
+
+    return [
+      { role: 'system', content: this.systemPrompt },
+      ...(summaryContext
+        ? ([{ role: 'system', content: summaryContext }] as const)
+        : []),
+      ...contextWindow.recentMessages.map((message) => ({
+        role: message.role as 'system' | 'user' | 'assistant',
+        content: message.content,
+      })),
+      {
+        role: 'user',
+        content: this.supportsVision ? liveUserContent : persistedUserContent,
+      },
+    ]
+  }
+
+  private formatSummaryContext(
+    contextWindow: Awaited<ReturnType<MemoryManager['getContextWindow']>>
+  ): string {
+    const sections = [
+      this.formatSummarySection(
+        'Daily summaries',
+        contextWindow.dailySummaries
+      ),
+      this.formatSummarySection(
+        'Weekly summaries',
+        contextWindow.weeklySummaries
+      ),
+      this.formatSummarySection(
+        'Monthly summaries',
+        contextWindow.monthlySummaries
+      ),
+    ].filter(Boolean)
+
+    if (sections.length === 0) {
+      return ''
+    }
+
+    return `Conversation memory:\n${sections.join('\n\n')}`
+  }
+
+  private formatSummarySection(
+    label: string,
+    summaries: Array<{ summary: string; endTime: number }>
+  ): string {
+    if (summaries.length === 0) {
+      return ''
+    }
+
+    const items = summaries.map(
+      (summary) =>
+        `- ${new Date(summary.endTime).toISOString()}: ${summary.summary}`
+    )
+
+    return `${label}:\n${items.join('\n')}`
   }
 
   private getDefaultSystemPrompt(): string {

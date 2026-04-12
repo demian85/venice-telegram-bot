@@ -4,7 +4,9 @@
 
 - **Node 24** required (`node >=24.0.0` in `package.json`, `24` in `.nvmrc`)
 - **npm** as package manager (`package-lock.json` present)
+- **tsx** for development runtime (`npm run start:dev`)
 - **Redis** for session storage, message memory, and job queues
+- **BullMQ** for news polling and delivery scheduling
 - **Docker Compose** for local development (Redis + app)
 - No dedicated lint/format npm scripts — ESLint and Prettier configs are present but invoked via `npx`
 
@@ -27,7 +29,7 @@ DEFAULT_FEEDS=https://planet-ai.net/rss.xml,https://news.ycombinator.com/rss
 
 ### Optional bot config
 
-Copy `src/bot.config.ts.sample` → `src/bot.config.ts` and override defaults.
+Copy `src/bot.config.ts.sample` to `src/bot.config.ts` and override defaults.
 
 ### Redis
 
@@ -41,20 +43,20 @@ Or run the full stack: `docker compose up`
 
 ## Entrypoints & Boundaries
 
-- `src/index.ts` — app bootstrap (dotenv → config → `Bot.init()`)
+- `src/index.ts` — app bootstrap (dotenv -> config -> `Bot.init()`)
 - `src/lib/telegram/index.ts` — bot wiring, command handlers, middleware
 - `src/lib/redis/` — Redis client and session store
-- `src/lib/agent/` — LangChain ReAct agent core
-- `src/lib/memory/` — Hierarchical memory system (recent → daily → weekly → monthly)
-- `src/lib/news/` — RSS feed monitoring and relevance detection
+- `src/lib/agent/` — LangChain ReAct agent core with three model roles
+- `src/lib/memory/` — Hierarchical memory system (recent -> daily -> weekly -> monthly)
+- `src/lib/news/` — RSS feed monitoring, relevance detection, and per-chat delivery
 - `build/` — generated output from `npm run build`; **do not edit directly**
 
 ## Trusted Commands
 
 ```bash
-npm run build      # tsc && resolve-tspaths → build/
+npm run build      # tsc && resolve-tspaths -> build/
 npm start          # node build/index.js | pino-pretty
-npm run start:dev  # ts-node -r tsconfig-paths/register src/index.ts | pino-pretty
+npm run start:dev  # tsx -r tsconfig-paths/register src/index.ts | pino-pretty
 npm run tscheck    # tsc --noEmit --pretty
 ```
 
@@ -67,18 +69,45 @@ npx prettier --check .
 
 ## Architecture Notes
 
-### Single Model Configuration
+### Three Model Roles
 
-This bot uses a single Venice AI model. Model selection has been removed in favor of a simplified configuration with one configurable model endpoint.
+The bot uses three distinct Venice AI model roles, each with a specific purpose:
+
+1. **Chat Model (A)** — `gpt-5.4-mini` — Primary conversational agent with vision support
+2. **Summarizer Model (B)** — `gpt-5.4-nano` — Memory summarization and context compression
+3. **News Relevance Model (C)** — `gpt-5.4-mini` — Article relevance scoring for news delivery
+
+Role wiring is centralized in `src/lib/agent/model.ts` via `veniceRoleModelDefinitions` and `createVeniceRoleModels()`.
+
+### Group Behavior and Privacy Mode
+
+In group chats, the bot operates with **passive group memory capture**:
+
+- All text and photo messages are persisted to Redis for shared conversation memory
+- The bot only replies when explicitly mentioned (e.g., `@botname`)
+- When privacy mode is disabled, every message is captured; when enabled, only mentions trigger the bot
+- Group messages are attributed with sender names (`Sender: message`) for context
+
+In private chats, every message invokes the agent directly.
 
 ### News Monitoring
 
-The bot polls configured RSS feeds every 5 minutes (configurable via `NEWS_POLL_INTERVAL_MINUTES`). Articles are scored for relevance using the Venice AI model and forwarded to Telegram groups if they meet the threshold (default: 70/100).
+The bot polls configured RSS feeds every 5 minutes (configurable via `NEWS_POLL_INTERVAL_MINUTES`). Articles are scored for relevance using the news relevance model and forwarded to Telegram groups if they meet the threshold (default: 70/100).
 
 Default feeds:
 
 - Planet AI (`https://planet-ai.net/rss.xml`) — Aggregates 30+ AI sources
 - Hacker News (`https://news.ycombinator.com/rss`) — Community-curated tech
+
+### Per-Chat News Controls
+
+Each chat has independent news subscription settings:
+
+- `/subscribe` — Enable AI news delivery for this chat
+- `/unsubscribe` — Disable AI news delivery for this chat
+- `/interval [seconds]` — Show or set delivery cadence (60-86400 seconds)
+
+In groups, these commands require admin privileges. In private chats, they are self-service.
 
 ### Memory System
 
@@ -89,20 +118,20 @@ Conversations are stored in Redis with hierarchical summarization:
 - Weekly summaries (7-day aggregates)
 - Monthly summaries (30-day aggregates)
 
-This prevents context window overflow while maintaining conversation history.
+This prevents context window overflow while maintaining conversation history. The summarizer model handles all compression tasks.
+
+### Scheduling
+
+News delivery uses BullMQ with two job types:
+
+- `poll-news` — Fetches RSS feeds and scores articles for relevance
+- `deliver-news` — Runs every 60 seconds to deliver relevant articles to subscribed chats based on per-chat intervals
 
 ## Known Pitfalls
 
-### README is stale on setup filenames
-
-- README says `.env` from `sample.env` → actual file is `env.sample` at repo root
-- README says `bot.config.ts.sample` at root → actual path is `src/bot.config.ts.sample`
-
-**Always verify against config/source files, not README.**
-
 ### npm test is declared but unverified
 
-`package.json` defines `npm test → jest` but `jest` is absent from `devDependencies`. Do not trust this script until verified.
+`package.json` defines `npm test -> jest` but `jest` is absent from `devDependencies`. Do not trust this script until verified.
 
 ### No CI or pre-commit hooks
 

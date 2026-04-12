@@ -1,58 +1,49 @@
 # Venice Bot
 
-Your personal Venice assistant as a telegram bot.
-<br>[Venice.ai](https://venice.ai/) is private and uncensored AI.
-<br>It can be added to groups.
-
-**Work in progress...**
+Your personal Venice assistant as a Telegram bot.
+[Venice.ai](https://venice.ai/) is private and uncensored AI.
+It can be added to groups.
 
 ## Features
 
-- ✅ Chat history
-- ✅ Text completion
-- ✅ Code completion
-- ✅ Image creation
-- ✅ Vision
-- ✅ Web search
-- ⌛ Image enhancements and upscaling
-- ⌛ Text To Speech
-- ⌛ Speech to Text
-- ⌛ Characters
-- ⌛ Autonomy
+- Chat history with hierarchical memory (daily, weekly, monthly summaries)
+- Text completion with tool support
+- Vision support for image analysis
+- Web search capability
+- AI news delivery with per-chat controls
 
 ## Groups
 
-It is recommended to disable privacy mode so that every user message is persisted in session.
-<br>The bot only autocompletes when mentioned.
-<br>Chat history is persisted in a database and kept separate for text and code completions.
+The bot operates with passive group memory capture. All messages are persisted for shared conversation context, but the bot only replies when explicitly mentioned (e.g., `@botname`).
+
+Disabling privacy mode is recommended so every message is captured for memory. Group messages include sender attribution for context.
 
 ## Commands
 
-_Not all of them are implemented yet._
+```
+start - Show bot overview and status
+help - Show operational commands and news status
+abort - Abort the current operation
+clear - Clear chat history for this chat
+info - Show chat scope and subscription details
+subscribe - Enable AI news delivery for this chat
+unsubscribe - Disable AI news delivery for this chat
+interval [seconds] - Show or set news delivery interval
+```
 
-```
-help - Show available commands
-clear - Clear chat history
-abort - Abort current operation
-config - Configuration options
-info - Configuration details
-image - Generate an image
-code - Query the coding model
-enhance = Enhance an image
-tts - Text to speech
-```
+In groups, `/subscribe`, `/unsubscribe`, and `/interval` require admin privileges. In private chats, they are self-service.
 
 ## Setup
 
-- Create an Venice API Key: https://venice.ai/settings/api
+- Create a Venice API Key: https://venice.ai/settings/api
 - Create a Telegram bot: https://t.me/BotFather
-- Create a `.env` file and fill in the variables from `sample.env`
-- Optional: Rename `bot.config.ts.sample` to `bot.config.ts` and override the necessary properties
+- Copy `env.sample` to `.env` and fill in the variables
+- Optional: Copy `src/bot.config.ts.sample` to `src/bot.config.ts` and override defaults
 - `npm i`
 
 ### Development
 
-- Spin up a Postgres instance
+- Start Redis: `docker compose up redis`
 - `npm run start:dev`
 
 ### Docker

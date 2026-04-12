@@ -10,7 +10,25 @@ export interface NewsItem {
   fetchedAt: Date
   relevanceScore?: number
   isRelevant?: boolean
-  isForwarded?: boolean
+  legacyBroadcastedAt?: Date
+}
+
+export interface NewsChatSubscription {
+  chatId: string
+  enabled: boolean
+  intervalSeconds: number
+  createdAt: Date
+  updatedAt: Date
+  deliverAfter: Date
+  subscribedAt?: Date
+  unsubscribedAt?: Date
+  lastSentAt?: Date
+}
+
+export interface NewsDeliveryRecord {
+  chatId: string
+  itemId: string
+  sentAt: Date
 }
 
 export interface NewsConfig {
@@ -19,6 +37,10 @@ export interface NewsConfig {
   relevanceThreshold: number
   maxArticlesPerPoll: number
 }
+
+export const defaultNewsIntervalSeconds = 300
+export const minNewsIntervalSeconds = 60
+export const maxNewsIntervalSeconds = 86400
 
 export const defaultNewsConfig: NewsConfig = {
   feeds: ['https://planet-ai.net/rss.xml', 'https://news.ycombinator.com/rss'],

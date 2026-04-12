@@ -4,6 +4,7 @@ import type { MemorySummary } from './types'
 export class SummaryStore {
   private readonly redis: Redis
   private readonly keyPrefix = 'memory:summary:'
+  private readonly levels = ['daily', 'weekly', 'monthly'] as const
 
   constructor(redis: Redis) {
     this.redis = redis
@@ -79,5 +80,18 @@ export class SummaryStore {
       }
     }
     return count
+  }
+
+  async clearSummaries(
+    chatId: string,
+    levels: ReadonlyArray<'daily' | 'weekly' | 'monthly'> = this.levels
+  ): Promise<void> {
+    const keys = levels.map((level) => this.getKey(chatId, level))
+
+    if (keys.length === 0) {
+      return
+    }
+
+    await this.redis.del(...keys)
   }
 }

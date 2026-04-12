@@ -23,7 +23,7 @@ export class NewsStore {
     const key = `${this.keyPrefix}item:${id}`
     const data = await this.redis.get(key)
     if (!data) return null
-    return JSON.parse(data)
+    return this.parseItem(data)
   }
 
   async getUnscoredItems(limit: number = 100): Promise<NewsItem[]> {
@@ -50,7 +50,7 @@ export class NewsStore {
       if (
         item &&
         item.isRelevant &&
-        !item.isForwarded &&
+        !item.legacyBroadcastedAt &&
         item.relevanceScore &&
         item.relevanceScore >= threshold
       ) {
@@ -58,6 +58,26 @@ export class NewsStore {
       }
     }
     return items.reverse()
+  }
+
+  async getRelevantItems(threshold: number): Promise<NewsItem[]> {
+    const ids = await this.redis.zrange(`${this.keyPrefix}items`, 0, -1)
+    const items: NewsItem[] = []
+
+    for (const id of ids) {
+      const item = await this.getItem(id)
+
+      if (
+        item &&
+        item.isRelevant &&
+        item.relevanceScore !== undefined &&
+        item.relevanceScore >= threshold
+      ) {
+        items.push(item)
+      }
+    }
+
+    return items
   }
 
   async updateRelevance(
@@ -76,8 +96,28 @@ export class NewsStore {
   async markForwarded(id: string): Promise<void> {
     const item = await this.getItem(id)
     if (item) {
-      item.isForwarded = true
+      item.legacyBroadcastedAt = new Date()
       await this.storeItem(item)
+    }
+  }
+
+  private parseItem(data: string): NewsItem {
+    const item = JSON.parse(data) as Omit<
+      NewsItem,
+      'publishedAt' | 'fetchedAt' | 'legacyBroadcastedAt'
+    > & {
+      publishedAt: string
+      fetchedAt: string
+      legacyBroadcastedAt?: string
+    }
+
+    return {
+      ...item,
+      publishedAt: new Date(item.publishedAt),
+      fetchedAt: new Date(item.fetchedAt),
+      legacyBroadcastedAt: item.legacyBroadcastedAt
+        ? new Date(item.legacyBroadcastedAt)
+        : undefined,
     }
   }
 }

@@ -46,15 +46,17 @@ export const helpTool = tool(
 I am a Venice AI-powered Telegram bot. Here's what I can do:
 
 **General Chat:**
-- Talk to me in private chats, or mention me in groups
+- Talk to me in private chats, or mention me in groups to get a reply
 - I remember our conversation context
 - I can use tools to help you
 
 **Available Commands:**
 - /help - Show this help message
 - /clear - Clear conversation history
-- /image - Generate images (coming soon)
-- /code - Get coding assistance (coming soon)
+- /info - Show chat and subscription status
+- /subscribe - Enable AI news delivery for this chat
+- /unsubscribe - Disable AI news delivery for this chat
+- /interval [seconds] - Show or set the news delivery interval
 
 **Tools:**
 - Calculator: Ask me to calculate expressions
