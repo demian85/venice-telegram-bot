@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { NewsQueryService } from '@lib/news/index.js'
+import { formatNewsArticles, type NewsArticle } from '@lib/telegram/util.js'
 
 function safeEvaluate(expression: string): number {
   const sanitized = expression.replace(/[^0-9+\-*/.()\s]/g, '')
@@ -55,10 +56,10 @@ I am an AI-powered Telegram bot. Here's what I can do:
 - /help - Show this help message
 - /clear - Clear conversation history
 - /info - Show chat and subscription status
-- /subscribe - Enable AI news delivery for this chat
-- /unsubscribe - Disable AI news delivery for this chat
+- /subscribe - Enable news delivery for this chat
+- /unsubscribe - Disable news delivery for this chat
 - /interval [seconds] - Show or set the news delivery interval
-- /news [count] - Get recent AI news (1-10 articles)
+- /news [count] - Get recent news (1-10 articles)
 
 **Tools:**
 - Calculator: Ask me to calculate expressions
@@ -188,34 +189,17 @@ export function createRecentNewsTool(
           return "I don't have any relevant news articles available right now. News is collected periodically from various sources. Try again in a few minutes, or subscribe to get news delivered automatically with /subscribe."
         }
 
-        const lines = [
-          `Here are the latest ${articles.length} relevant news articles:`,
-          '',
-        ]
-
-        articles.forEach((article, index) => {
-          const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-          })
-          const description = article.description
-            ? article.description.slice(0, 200) +
-              (article.description.length > 200 ? '...' : '')
-            : ''
-
-          lines.push(`${index + 1}. ${article.title}`)
-          lines.push(`Source: ${article.source} | ${publishedStr}`)
-          if (description) {
-            lines.push(description)
-          }
-          lines.push(`Read full article: ${article.url}`)
-          if (article.relevanceScore !== undefined) {
-            lines.push(`Relevance: ${article.relevanceScore}/100`)
-          }
-          lines.push('')
+        const header = `Here are the latest ${articles.length} relevant news articles:\n\n`
+        const formatted = formatNewsArticles(articles as NewsArticle[], {
+          mode: 'plain',
+          includeDescription: true,
+          descriptionMaxLength: 200,
+          includeRelevance: true,
+          includeDate: true,
+          numbered: true,
         })
 
-        return lines.join('\n')
+        return header + formatted
       } catch (error) {
         console.error('Error retrieving recent news:', error)
         return "I couldn't retrieve recent news right now. Please try again later or use /news command."

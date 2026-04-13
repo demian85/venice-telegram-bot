@@ -9,9 +9,4 @@ const loggerOptions = {
   base: null,
 }
 
-export default pino(
-  loggerOptions,
-  process.env.NODE_ENV !== 'test'
-    ? pino.destination(1)
-    : pino.destination('./log')
-)
+export default pino(loggerOptions, pino.destination(1))

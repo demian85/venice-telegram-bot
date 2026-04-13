@@ -28,6 +28,8 @@ import {
   formatTelegramMarkdownReply,
   escapeMarkdown,
   createMarkdownLink,
+  formatNewsArticles,
+  type NewsArticle,
 } from './util.js'
 
 export interface BotModels {
@@ -118,15 +120,15 @@ export class Bot {
     },
     {
       command: 'news',
-      description: 'Get recent AI news (1-10 articles)',
+      description: 'Get recent news (1-10 articles)',
     },
     {
       command: 'subscribe',
-      description: 'Enable AI news delivery',
+      description: 'Enable news delivery',
     },
     {
       command: 'unsubscribe',
-      description: 'Disable AI news delivery',
+      description: 'Disable news delivery',
     },
     {
       command: 'interval',
@@ -134,7 +136,7 @@ export class Bot {
     },
     {
       command: 'summary',
-      description: 'Summarize recent AI news (last 24h)',
+      description: 'Summarize recent news (last 24h)',
     },
   ] as const
 
@@ -414,40 +416,17 @@ export class Bot {
             return
           }
 
-          const lines = [
-            `*📰 Recent AI News (${articles.length} article${articles.length === 1 ? '' : 's'})*`,
-            '',
-          ]
-
-          articles.forEach((article, index) => {
-            const publishedStr = article.publishedAt.toLocaleDateString(
-              'en-US',
-              {
-                month: 'short',
-                day: 'numeric',
-              }
-            )
-
-            lines.push(`${index + 1}. ${escapeMarkdown(article.title)}`)
-            lines.push(
-              `📰 Source: ${escapeMarkdown(article.source)} | 📅 ${publishedStr}`
-            )
-            if (article.description) {
-              const desc =
-                article.description.slice(0, 200) +
-                (article.description.length > 200 ? '...' : '')
-              lines.push(`${escapeMarkdown(desc)}`)
-            }
-            lines.push(
-              `🔗 ${createMarkdownLink('Read full article', article.url)}`
-            )
-            if (article.relevanceScore !== undefined) {
-              lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
-            }
-            lines.push('')
+          const header = `*📰 Recent AI News (${articles.length} article${articles.length === 1 ? '' : 's'})*\n`
+          const formatted = formatNewsArticles(articles as NewsArticle[], {
+            mode: 'markdown',
+            includeDescription: true,
+            descriptionMaxLength: 200,
+            includeRelevance: true,
+            includeDate: true,
+            numbered: true,
           })
 
-          await ctx.reply(lines.join('\n'), {
+          await ctx.reply(header + formatted, {
             parse_mode: 'Markdown',
             link_preview_options: { is_disabled: true },
           })
@@ -564,22 +543,14 @@ export class Bot {
             return
           }
 
-          const newsContext = articles
-            .map((article, index) => {
-              const lines = [
-                `${index + 1}. ${article.title}`,
-                `Source: ${article.source}`,
-              ]
-              if (article.description) {
-                lines.push(`Description: ${article.description}`)
-              }
-              if (article.relevanceScore !== undefined) {
-                lines.push(`Relevance Score: ${article.relevanceScore}/100`)
-              }
-              lines.push(`URL: ${article.url}`)
-              return lines.join('\n')
-            })
-            .join('\n\n')
+          const newsContext = formatNewsArticles(articles as NewsArticle[], {
+            mode: 'plain',
+            includeDescription: true,
+            descriptionMaxLength: 0,
+            includeRelevance: true,
+            includeDate: false,
+            numbered: true,
+          })
 
           const prompt = `Summarize the most relevant and important news from the following articles collected in the last 24 hours. Focus on the key developments and trends. Present your summary in a clear, concise format highlighting the most significant items:\n\n${newsContext}`
 
@@ -847,10 +818,10 @@ export class Bot {
       '/abort - abort the current interactive operation',
       '/clear - clear stored conversation history for this chat scope',
       '/info - show chat scope and subscription details',
-      '/news [count] - get recent AI news (1-10 articles, default: 5)',
-      '/summary - summarize the most relevant AI news from the last 24 hours',
-      '/subscribe - enable relevant AI news delivery for this chat',
-      '/unsubscribe - disable relevant AI news delivery for this chat',
+      '/news [count] - get recent news (1-10 articles, default: 5)',
+      '/summary - summarize the most relevant news from the last 24 hours',
+      '/subscribe - enable relevant news delivery for this chat',
+      '/unsubscribe - disable relevant news delivery for this chat',
       `/interval [seconds] - show or set the news cadence (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds})`,
       '',
       this.getIngressSummary(ctx),

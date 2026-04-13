@@ -10,7 +10,7 @@ It can be added to groups.
 - Text completion with tool support
 - Vision support for image analysis
 - Web search capability
-- AI news delivery with per-chat controls
+- News delivery with per-chat controls
 
 ## Groups
 

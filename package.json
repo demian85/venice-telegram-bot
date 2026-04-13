@@ -8,7 +8,7 @@
     ".": "./build/index.js"
   },
   "scripts": {
-    "test": "jest",
+    "test": "vitest run",
     "build": "tsc && resolve-tspaths",
     "start": "node build/index.js | pino-pretty",
     "start:dev": "tsx watch src/index.ts | pino-pretty",
@@ -45,7 +45,8 @@
     "resolve-tspaths": "^0.8.16",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.58.1"
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@extractus/feed-extractor": "^7.1.7",

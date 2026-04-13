@@ -1,14 +1,13 @@
-import assert from 'node:assert/strict'
-import test from 'node:test'
-import type { Config } from '../src/lib/types'
-import { Bot } from '../src/lib/telegram'
-import { ChatSubscriptionStore } from '../src/lib/news'
+import { test, expect } from 'vitest'
+import type { Config } from '../src/lib/types.js'
+import { Bot } from '../src/lib/telegram/index.js'
+import { ChatSubscriptionStore } from '../src/lib/news/index.js'
 import {
   FakeTelegraf,
   InMemoryRedis,
   createPhotoUpdate,
   createTextUpdate,
-} from './test-helpers'
+} from './test-helpers.js'
 
 class StubAgentService {
   readonly persisted: Array<{
@@ -69,6 +68,8 @@ function createBotHarness(options: { imageSupport?: boolean } = {}) {
     {
       agentModel: {} as never,
       summarizerModel: {} as never,
+      chatSystemPrompt: 'You are a helpful assistant',
+      supportsVision: options.imageSupport ?? true,
     },
     {
       telegraf: telegraf as never,
@@ -93,7 +94,7 @@ test('private text messages invoke the agent directly', async () => {
     })
   )
 
-  assert.deepEqual(agentService.invocations, [
+  expect(agentService.invocations).toEqual([
     {
       chatId: 'private:100',
       input: {
@@ -102,8 +103,8 @@ test('private text messages invoke the agent directly', async () => {
       },
     },
   ])
-  assert.deepEqual(ctx.chatActions, ['typing'])
-  assert.equal(ctx.replyLog[0]?.text, 'agent reply')
+  expect(ctx.chatActions).toEqual(['typing'])
+  expect(ctx.replyLog[0]?.text).toBe('agent reply')
 })
 
 test('group text without a mention is persisted for memory without triggering a reply', async () => {
@@ -119,7 +120,7 @@ test('group text without a mention is persisted for memory without triggering a 
     })
   )
 
-  assert.deepEqual(agentService.persisted, [
+  expect(agentService.persisted).toEqual([
     {
       chatId: 'group:-100',
       input: {
@@ -128,8 +129,8 @@ test('group text without a mention is persisted for memory without triggering a 
       },
     },
   ])
-  assert.deepEqual(agentService.invocations, [])
-  assert.deepEqual(ctx.replyLog, [])
+  expect(agentService.invocations).toEqual([])
+  expect(ctx.replyLog).toEqual([])
 })
 
 test('group text with an explicit mention invokes the agent with sender-attributed text', async () => {
@@ -146,7 +147,7 @@ test('group text with an explicit mention invokes the agent with sender-attribut
     })
   )
 
-  assert.deepEqual(agentService.invocations, [
+  expect(agentService.invocations).toEqual([
     {
       chatId: 'group:-100',
       input: {
@@ -155,8 +156,8 @@ test('group text with an explicit mention invokes the agent with sender-attribut
       },
     },
   ])
-  assert.deepEqual(ctx.chatActions, ['typing'])
-  assert.equal(ctx.replyLog[0]?.text, 'agent reply')
+  expect(ctx.chatActions).toEqual(['typing'])
+  expect(ctx.replyLog[0]?.text).toBe('agent reply')
 })
 
 test('private photos use the live vision path when the model supports image input', async () => {
@@ -172,7 +173,7 @@ test('private photos use the live vision path when the model supports image inpu
     })
   )
 
-  assert.deepEqual(agentService.invocations, [
+  expect(agentService.invocations).toEqual([
     {
       chatId: 'private:100',
       input: {
@@ -182,8 +183,8 @@ test('private photos use the live vision path when the model supports image inpu
       },
     },
   ])
-  assert.deepEqual(ctx.chatActions, ['upload_photo'])
-  assert.equal(ctx.replyLog[0]?.text, 'agent reply')
+  expect(ctx.chatActions).toEqual(['upload_photo'])
+  expect(ctx.replyLog[0]?.text).toBe('agent reply')
 })
 
 test('private photos persist context and warn when the model does not support vision', async () => {
@@ -199,8 +200,8 @@ test('private photos persist context and warn when the model does not support vi
     })
   )
 
-  assert.deepEqual(agentService.invocations, [])
-  assert.deepEqual(agentService.persisted, [
+  expect(agentService.invocations).toEqual([])
+  expect(agentService.persisted).toEqual([
     {
       chatId: 'private:100',
       input: {
@@ -210,8 +211,7 @@ test('private photos persist context and warn when the model does not support vi
       },
     },
   ])
-  assert.match(
-    ctx.replyLog[0]?.text ?? '',
+  expect(ctx.replyLog[0]?.text ?? '').toMatch(
     /cannot inspect images yet\. I saved your message context/
   )
 })
@@ -230,16 +230,14 @@ test('help surfaces the current operational command set and self-service news no
   )
 
   const helpText = ctx.replyLog[0]?.text ?? ''
-  assert.match(helpText, /Operational commands:/)
-  assert.match(
-    helpText,
-    /\/subscribe - enable relevant AI news delivery for this chat/
+  expect(helpText).toMatch(/Operational commands:/)
+  expect(helpText).toMatch(
+    /\/subscribe - enable relevant news delivery for this chat/
   )
-  assert.match(
-    helpText,
+  expect(helpText).toMatch(
     /private chats invoke the agent directly on each text or photo message/
   )
-  assert.match(helpText, /self-service/)
+  expect(helpText).toMatch(/self-service/)
 })
 
 test('group subscription commands are rejected for non-admin users', async () => {
@@ -256,9 +254,8 @@ test('group subscription commands are rejected for non-admin users', async () =>
     })
   )
 
-  assert.equal(
-    ctx.replyLog[0]?.text,
+  expect(ctx.replyLog[0]?.text).toBe(
     'Only group admins can use /subscribe in groups.'
   )
-  assert.equal(await subscriptions.getSubscription('-100'), null)
+  expect(await subscriptions.getSubscription('-100')).toBe(null)
 })

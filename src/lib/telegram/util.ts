@@ -58,10 +58,6 @@ export function fullMarkdown2TgMarkdown(input: string): string {
   )
 }
 
-/**
- * Format a reply for Telegram by converting markdown and escaping problematic characters.
- * This is the main entry point for formatting agent/tool responses.
- */
 export function formatTelegramMarkdownReply(input: string): string {
   if (!input) return ''
 
@@ -72,12 +68,119 @@ export function formatTelegramMarkdownReply(input: string): string {
   return escapeMarkdown(converted).trim()
 }
 
-/**
- * Create a Markdown link with proper URL escaping for Telegram.
- * URLs with parentheses or special characters will break standard Markdown link syntax.
- */
 export function createMarkdownLink(text: string, url: string): string {
   if (!url) return escapeMarkdown(text)
   const safeUrl = url.replace(/\)/g, '%29')
   return `[${escapeMarkdown(text)}](${safeUrl})`
+}
+
+export interface NewsArticle {
+  title: string
+  url: string
+  source: string
+  publishedAt: Date
+  relevanceScore?: number
+  description?: string
+}
+
+export interface FormatNewsOptions {
+  mode: 'markdown' | 'plain'
+  includeDescription?: boolean
+  descriptionMaxLength?: number
+  includeRelevance?: boolean
+  includeDate?: boolean
+  addSpacing?: boolean
+}
+
+export function formatNewsArticle(
+  article: NewsArticle,
+  options: FormatNewsOptions
+): string {
+  const {
+    mode,
+    includeDescription = true,
+    descriptionMaxLength = 200,
+    includeRelevance = true,
+    includeDate = true,
+    addSpacing = false,
+  } = options
+
+  const isMarkdown = mode === 'markdown'
+  const lines: string[] = []
+
+  if (isMarkdown) {
+    lines.push(`*${escapeMarkdown(article.title)}*`)
+  } else {
+    lines.push(article.title)
+  }
+
+  const parts: string[] = []
+  if (isMarkdown) {
+    parts.push(`📰 Source: ${escapeMarkdown(article.source)}`)
+    if (includeDate) {
+      const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      parts.push(`📅 ${publishedStr}`)
+    }
+    lines.push(parts.join(' | '))
+  } else {
+    parts.push(`Source: ${article.source}`)
+    if (includeDate) {
+      const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      parts.push(publishedStr)
+    }
+    if (parts.length > 0) {
+      lines.push(parts.join(' | '))
+    }
+  }
+
+  if (includeDescription && article.description) {
+    let desc = article.description
+    if (descriptionMaxLength > 0 && desc.length > descriptionMaxLength) {
+      desc = desc.slice(0, descriptionMaxLength) + '...'
+    }
+    lines.push(isMarkdown ? escapeMarkdown(desc) : desc)
+  }
+
+  if (isMarkdown) {
+    lines.push(`🔗 ${createMarkdownLink('Read full article', article.url)}`)
+  } else {
+    lines.push(`URL: ${article.url}`)
+  }
+
+  if (includeRelevance && article.relevanceScore !== undefined) {
+    if (isMarkdown) {
+      lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
+    } else {
+      lines.push(`Relevance Score: ${article.relevanceScore}/100`)
+    }
+  }
+
+  if (addSpacing) {
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+export function formatNewsArticles(
+  articles: NewsArticle[],
+  options: FormatNewsOptions & { numbered?: boolean } = { mode: 'plain' }
+): string {
+  const { numbered = true, ...formatOptions } = options
+
+  return articles
+    .map((article, index) => {
+      const formatted = formatNewsArticle(article, formatOptions)
+      if (numbered) {
+        return `${index + 1}. ${formatted}`
+      }
+      return formatted
+    })
+    .join('\n\n')
 }

@@ -1,9 +1,8 @@
-import assert from 'node:assert/strict'
-import test from 'node:test'
-import { AgentService } from '../src/lib/agent'
-import { SummaryStore } from '../src/lib/memory'
-import { buildPersistedTextShadow } from '../src/lib/agent/content'
-import { InMemoryRedis } from './test-helpers'
+import { test, expect } from 'vitest'
+import { AgentService } from '../src/lib/agent/index.js'
+import { SummaryStore } from '../src/lib/memory/index.js'
+import { buildPersistedTextShadow } from '../src/lib/agent/content.js'
+import { InMemoryRedis } from './test-helpers.js'
 
 function createStubModel(modelName: string) {
   return {
@@ -19,6 +18,7 @@ test('vision-capable role wiring keeps live image input rich and persists a text
     redis: redis.asRedis(),
     agentModel: createStubModel('gpt-5.4-mini'),
     summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: true,
     tools: [],
   })
 
@@ -35,21 +35,21 @@ test('vision-capable role wiring keeps live image input rich and persists a text
     },
   }
 
-  assert.equal(service.supportsImageInput(), true)
+  expect(service.supportsImageInput()).toBe(true)
 
   const reply = await service.invokeLive('private:1', {
     text: 'Describe this image',
     imageUrl: 'https://images.test/cat.png',
   })
 
-  assert.equal(reply, 'vision reply')
+  expect(reply).toBe('vision reply')
 
   const payload = agentInvocations[0] as {
     messages: Array<{ role: string; content: unknown }>
   }
   const lastMessage = payload.messages.at(-1)
 
-  assert.deepEqual(lastMessage, {
+  expect(lastMessage).toEqual({
     role: 'user',
     content: [
       {
@@ -66,17 +66,22 @@ test('vision-capable role wiring keeps live image input rich and persists a text
   })
 
   const history = await service.getHistory('private:1')
-  assert.deepEqual(
+  expect(
     history
-      .map((message) => ({
+      .map((message: { role: string; content: string }) => ({
         role: message.role,
         content: message.content,
       }))
-      .sort((left, right) =>
-        `${left.role}:${left.content}`.localeCompare(
-          `${right.role}:${right.content}`
-        )
-      ),
+      .sort(
+        (
+          left: { role: string; content: string },
+          right: { role: string; content: string }
+        ) =>
+          `${left.role}:${left.content}`.localeCompare(
+            `${right.role}:${right.content}`
+          )
+      )
+  ).toEqual(
     [
       {
         role: 'assistant',
@@ -101,6 +106,7 @@ test('non-vision role wiring falls back to text-shadow input for live and persis
     redis: redis.asRedis(),
     agentModel: createStubModel('gpt-5.4-nano'),
     summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: false,
     tools: [],
   })
 
@@ -117,11 +123,10 @@ test('non-vision role wiring falls back to text-shadow input for live and persis
     },
   }
 
-  assert.equal(service.supportsImageInput(), false)
-  assert.equal(
-    buildPersistedTextShadow({ imageUrl: 'https://images.test/only.png' }),
-    '[image attached]'
-  )
+  expect(service.supportsImageInput()).toBe(false)
+  expect(
+    buildPersistedTextShadow({ imageUrl: 'https://images.test/only.png' })
+  ).toBe('[image attached]')
 
   await service.invokeLive('private:2', {
     text: 'What is in this image?',
@@ -135,14 +140,15 @@ test('non-vision role wiring falls back to text-shadow input for live and persis
     messages: Array<{ role: string; content: unknown }>
   }
 
-  assert.deepEqual(payload.messages.at(-1), {
+  expect(payload.messages.at(-1)).toEqual({
     role: 'user',
     content: '[image attached]\nCaption: What is in this image?',
   })
 
   const history = await service.getHistory('private:2')
-  assert.deepEqual(
-    history.map((message) => message.content).sort(),
+  expect(
+    history.map((message: { content: string }) => message.content).sort()
+  ).toEqual(
     [
       '[image attached]',
       '[image attached]\nCaption: What is in this image?',
@@ -157,6 +163,7 @@ test('clearHistory deletes summaries and only clears the targeted chat scope', a
     redis: redis.asRedis(),
     agentModel: createStubModel('gpt-5.4-mini'),
     summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: true,
     tools: [],
   })
   const summaryStore = new SummaryStore(redis.asRedis())
@@ -196,15 +203,12 @@ test('clearHistory deletes summaries and only clears the targeted chat scope', a
 
   await service.clearHistory('group:1')
 
-  assert.deepEqual(await service.getHistory('group:1'), [])
-  assert.equal((await summaryStore.getSummaries('group:1', 'daily')).length, 0)
-  assert.equal(
-    (await summaryStore.getSummaries('group:1', 'monthly')).length,
-    0
-  )
+  expect(await service.getHistory('group:1')).toEqual([])
+  expect((await summaryStore.getSummaries('group:1', 'daily')).length).toBe(0)
+  expect((await summaryStore.getSummaries('group:1', 'monthly')).length).toBe(0)
 
   const preservedHistory = await service.getHistory('group:2')
-  assert.equal(preservedHistory.length, 1)
-  assert.equal(preservedHistory[0]?.content, 'beta')
-  assert.equal((await summaryStore.getSummaries('group:2', 'daily')).length, 1)
+  expect(preservedHistory.length).toBe(1)
+  expect(preservedHistory[0]?.content).toBe('beta')
+  expect((await summaryStore.getSummaries('group:2', 'daily')).length).toBe(1)
 })

@@ -1,21 +1,19 @@
-import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test, expect } from 'vitest'
 import {
   ChatSubscriptionStore,
   NewsDeliveryStore,
   NewsScheduler,
   NewsStore,
-  defaultNewsConfig,
   defaultNewsIntervalSeconds,
   minNewsIntervalSeconds,
   type NewsItem,
-} from '../src/lib/news'
+} from '../src/lib/news/index.js'
 import {
   InMemoryRedis,
   captureLoggerRecords,
   createNoopQueue,
   createNoopWorker,
-} from './test-helpers'
+} from './test-helpers.js'
 
 function createNewsItem(input: {
   id: string
@@ -37,11 +35,21 @@ function createNewsItem(input: {
   }
 }
 
+const defaultNewsConfig = {
+  feeds: [],
+  pollIntervalMinutes: 5,
+  deliveryCheckIntervalSeconds: 60,
+  relevanceThreshold: 70,
+  maxArticlesPerPoll: 10,
+  topics: [],
+}
+
 async function overwriteSubscription(
   redis: InMemoryRedis,
   subscription: Awaited<ReturnType<ChatSubscriptionStore['getSubscription']>>
 ) {
-  assert.ok(subscription)
+  expect(subscription).toBeTruthy()
+  if (!subscription) throw new Error('Missing subscription')
   await redis.set(
     `news:chat-subscription:${subscription.chatId}`,
     JSON.stringify(subscription)
@@ -62,19 +70,17 @@ test('subscription defaults are disabled, use the default interval, and reject i
 
   const subscription = await store.getOrCreateSubscription('chat-1', now)
 
-  assert.equal(subscription.enabled, false)
-  assert.equal(subscription.intervalSeconds, defaultNewsIntervalSeconds)
-  assert.equal(subscription.deliverAfter.toISOString(), now.toISOString())
+  expect(subscription.enabled).toBe(false)
+  expect(subscription.intervalSeconds).toBe(defaultNewsIntervalSeconds)
+  expect(subscription.deliverAfter.toISOString()).toBe(now.toISOString())
 
-  await assert.rejects(
-    () =>
-      store.setIntervalSeconds(
-        'chat-1',
-        minNewsIntervalSeconds - 1,
-        new Date('2026-04-11T10:05:00.000Z')
-      ),
-    /News interval must be an integer between/
-  )
+  await expect(
+    store.setIntervalSeconds(
+      'chat-1',
+      minNewsIntervalSeconds - 1,
+      new Date('2026-04-11T10:05:00.000Z')
+    )
+  ).rejects.toThrow(/News interval must be an integer between/)
 })
 
 test('unsubscribe and resubscribe preserve the interval while resetting future delivery gating', async () => {
@@ -96,17 +102,16 @@ test('unsubscribe and resubscribe preserve the interval while resetting future d
     new Date('2026-04-11T10:30:00.000Z')
   )
 
-  assert.equal(unsubscribed.enabled, false)
-  assert.equal(resubscribed.enabled, true)
-  assert.equal(resubscribed.intervalSeconds, 900)
-  assert.equal(
-    resubscribed.deliverAfter.toISOString(),
+  expect(unsubscribed.enabled).toBe(false)
+  expect(resubscribed.enabled).toBe(true)
+  expect(resubscribed.intervalSeconds).toBe(900)
+  expect(resubscribed.deliverAfter.toISOString()).toBe(
     '2026-04-11T10:30:00.000Z'
   )
-  assert.equal(resubscribed.unsubscribedAt, undefined)
+  expect(resubscribed.unsubscribedAt).toBeUndefined()
 })
 
-test('delivery stays isolated per chat and chooses the oldest eligible undelivered article first', async (t) => {
+test('delivery stays isolated per chat and chooses the oldest eligible undelivered article first', async () => {
   const redis = new InMemoryRedis()
   const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
   const deliveryStore = new NewsDeliveryStore(redis.asRedis())
@@ -166,51 +171,44 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
     })
   })
 
-  assert.deepEqual(firstPass, [
+  expect(firstPass).toEqual([
     { chatId: 'chat-a', title: 'First relevant story' },
     { chatId: 'chat-b', title: 'First relevant story' },
   ])
 
-  assert.equal(
-    getEventRecords(firstPassRecords, 'news.delivery.tick').length,
-    1
-  )
+  expect(getEventRecords(firstPassRecords, 'news.delivery.tick').length).toBe(1)
 
   const eligibleRecords = getEventRecords(
     firstPassRecords,
     'news.delivery.chat.eligible'
   )
-  assert.equal(eligibleRecords.length, 2)
-  assert.deepEqual(
-    eligibleRecords.map((record) => record.context.chatId),
-    ['chat-a', 'chat-b']
-  )
-  assert.deepEqual(
-    eligibleRecords.map((record) => record.context.pendingArticleId),
-    ['item-1', 'item-1']
-  )
+  expect(eligibleRecords.length).toBe(2)
+  expect(eligibleRecords.map((record) => record.context.chatId)).toEqual([
+    'chat-a',
+    'chat-b',
+  ])
+  expect(
+    eligibleRecords.map((record) => record.context.pendingArticleId)
+  ).toEqual(['item-1', 'item-1'])
 
   const sendStartRecords = getEventRecords(
     firstPassRecords,
     'news.telegram.send.start'
   )
-  assert.equal(sendStartRecords.length, 2)
-  assert.deepEqual(
-    sendStartRecords.map((record) => record.context.deliveryState),
-    ['marked_delivered', 'marked_delivered']
-  )
+  expect(sendStartRecords.length).toBe(2)
+  expect(
+    sendStartRecords.map((record) => record.context.deliveryState)
+  ).toEqual(['marked_delivered', 'marked_delivered'])
 
   const sendSuccessRecords = getEventRecords(
     firstPassRecords,
     'news.telegram.send.success'
   )
-  assert.equal(sendSuccessRecords.length, 2)
-  assert.deepEqual(
-    sendSuccessRecords.map((record) => record.context.deliveryState),
-    ['marked_sent', 'marked_sent']
-  )
-
-  t.diagnostic(
+  expect(sendSuccessRecords.length).toBe(2)
+  expect(
+    sendSuccessRecords.map((record) => record.context.deliveryState)
+  ).toEqual(['marked_sent', 'marked_sent'])
+  console.log(
     JSON.stringify({
       scenario: 'happy_delivery',
       events: [
@@ -235,13 +233,15 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
     })
   )
 
-  assert.equal(await deliveryStore.hasDelivered('chat-a', 'item-1'), true)
-  assert.equal(await deliveryStore.hasDelivered('chat-b', 'item-1'), true)
+  expect(await deliveryStore.hasDelivered('chat-a', 'item-1')).toBe(true)
+  expect(await deliveryStore.hasDelivered('chat-b', 'item-1')).toBe(true)
 
   const expiredCooldownA = await subscriptionStore.getSubscription('chat-a')
   const expiredCooldownB = await subscriptionStore.getSubscription('chat-b')
-  assert.ok(expiredCooldownA)
-  assert.ok(expiredCooldownB)
+  expect(expiredCooldownA).toBeTruthy()
+  expect(expiredCooldownB).toBeTruthy()
+  if (!expiredCooldownA || !expiredCooldownB)
+    throw new Error('Missing cooldown subscriptions')
   expiredCooldownA.lastSentAt = new Date('2026-04-11T08:00:00.000Z')
   expiredCooldownB.lastSentAt = new Date('2026-04-11T08:00:00.000Z')
   await overwriteSubscription(redis, expiredCooldownA)
@@ -261,13 +261,13 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
     secondPass.push({ chatId: delivery.chatId, title: delivery.article.title })
   })
 
-  assert.deepEqual(secondPass, [
+  expect(secondPass).toEqual([
     { chatId: 'chat-a', title: 'Second relevant story' },
     { chatId: 'chat-b', title: 'Second relevant story' },
   ])
 })
 
-test('delivery respects cooldowns and skips items fetched before a resubscribe gate', async (t) => {
+test('delivery respects cooldowns and skips items fetched before a resubscribe gate', async () => {
   const redis = new InMemoryRedis()
   const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
   const deliveryStore = new NewsDeliveryStore(redis.asRedis())
@@ -309,7 +309,8 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
 
   const cooldownBlocked: string[] = []
   const subscription = await subscriptionStore.getSubscription('chat-1')
-  assert.ok(subscription)
+  expect(subscription).toBeTruthy()
+  if (!subscription) throw new Error('Missing subscription')
   subscription.lastSentAt = new Date()
   await overwriteSubscription(redis, subscription)
 
@@ -330,19 +331,18 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
   )
 
   const blockedRecord = cooldownBlockedRecords.find(
-    (record) =>
+    (record: any) =>
       record.context.event === 'news.delivery.chat.skip' &&
       record.context.chatId === 'chat-1'
   )
 
-  assert.ok(blockedRecord)
-  assert.equal(blockedRecord.context.skipReason, 'not_due')
-  assert.equal(
-    getEventRecords(cooldownBlockedRecords, 'news.telegram.send.start').length,
-    0
-  )
-
-  t.diagnostic(
+  expect(blockedRecord).toBeTruthy()
+  if (!blockedRecord) throw new Error('Missing blockedRecord')
+  expect(blockedRecord.context.skipReason).toBe('not_due')
+  expect(
+    getEventRecords(cooldownBlockedRecords, 'news.telegram.send.start').length
+  ).toBe(0)
+  console.log(
     JSON.stringify({
       scenario: 'cooldown_blocked',
       event: {
@@ -353,7 +353,7 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
     })
   )
 
-  assert.deepEqual(cooldownBlocked, [])
+  expect(cooldownBlocked).toEqual([])
 
   subscription.lastSentAt = new Date('2026-04-11T08:00:00.000Z')
   await overwriteSubscription(redis, subscription)
@@ -369,12 +369,12 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
     deliveredTitles.push(delivery.article.title)
   })
 
-  assert.deepEqual(deliveredTitles, ['Eligible new item'])
-  assert.equal(await deliveryStore.hasDelivered('chat-1', 'too-old'), false)
-  assert.equal(await deliveryStore.hasDelivered('chat-1', 'eligible'), true)
+  expect(deliveredTitles).toEqual(['Eligible new item'])
+  expect(await deliveryStore.hasDelivered('chat-1', 'too-old')).toBe(false)
+  expect(await deliveryStore.hasDelivered('chat-1', 'eligible')).toBe(true)
 })
 
-test('delivery rollback unmarks an article when the send callback fails', async (t) => {
+test('delivery rollback unmarks an article when the send callback fails', async () => {
   const redis = new InMemoryRedis()
   const subscriptionStore = new ChatSubscriptionStore(redis.asRedis())
   const deliveryStore = new NewsDeliveryStore(redis.asRedis())
@@ -408,63 +408,63 @@ test('delivery rollback unmarks an article when the send callback fails', async 
   )
 
   const { records: rollbackRecords } = await captureLoggerRecords(async () => {
-    await assert.rejects(
-      () =>
-        (
-          scheduler as never as {
-            deliverRelevantArticles(
-              callback: (delivery: {
-                chatId: string
-                article: { articleId: string; title: string }
-              }) => Promise<void>
-            ): Promise<void>
-          }
-        ).deliverRelevantArticles(async (delivery) => {
-          assert.equal(delivery.chatId, 'chat-rollback')
-          assert.equal(delivery.article.articleId, 'rollback-item')
-          throw new Error('Simulated Telegram send failure')
-        }),
-      /Simulated Telegram send failure/
-    )
+    await expect(
+      (
+        scheduler as never as {
+          deliverRelevantArticles(
+            callback: (delivery: {
+              chatId: string
+              article: { articleId: string; title: string }
+            }) => Promise<void>
+          ): Promise<void>
+        }
+      ).deliverRelevantArticles(async (delivery) => {
+        expect(delivery.chatId).toBe('chat-rollback')
+        expect(delivery.article.articleId).toBe('rollback-item')
+        throw new Error('Simulated Telegram send failure')
+      })
+    ).rejects.toThrow(/Simulated Telegram send failure/)
   })
 
   const eligibleRollbackRecord = rollbackRecords.find(
-    (record) =>
+    (record: any) =>
       record.context.event === 'news.delivery.chat.eligible' &&
       record.context.chatId === 'chat-rollback'
   )
-  assert.ok(eligibleRollbackRecord)
-  assert.equal(eligibleRollbackRecord.context.pendingArticleId, 'rollback-item')
+  expect(eligibleRollbackRecord).toBeTruthy()
+  if (!eligibleRollbackRecord) throw new Error('Missing eligibleRollbackRecord')
+  expect(eligibleRollbackRecord.context.pendingArticleId).toBe('rollback-item')
 
   const sendStartRecord = rollbackRecords.find(
-    (record) =>
+    (record: any) =>
       record.context.event === 'news.telegram.send.start' &&
       record.context.chatId === 'chat-rollback'
   )
-  assert.ok(sendStartRecord)
-  assert.equal(sendStartRecord.context.articleId, 'rollback-item')
+  expect(sendStartRecord).toBeTruthy()
+  if (!sendStartRecord) throw new Error('Missing sendStartRecord')
+  expect(sendStartRecord.context.articleId).toBe('rollback-item')
 
   const sendErrorRecord = rollbackRecords.find(
-    (record) =>
+    (record: any) =>
       record.context.event === 'news.telegram.send.error' &&
       record.context.chatId === 'chat-rollback'
   )
-  assert.ok(sendErrorRecord)
-  assert.equal(sendErrorRecord.context.rollbackAction, 'unmarkDelivered')
+  expect(sendErrorRecord).toBeTruthy()
+  if (!sendErrorRecord) throw new Error('Missing sendErrorRecord')
+  expect(sendErrorRecord.context.rollbackAction).toBe('unmarkDelivered')
 
   const rollbackRecord = rollbackRecords.find(
-    (record) =>
+    (record: any) =>
       record.context.event === 'news.delivery.rollback' &&
       record.context.chatId === 'chat-rollback'
   )
-  assert.ok(rollbackRecord)
-  assert.equal(rollbackRecord.context.rollbackAction, 'unmarkDelivered')
-  assert.equal(
-    getEventRecords(rollbackRecords, 'news.telegram.send.success').length,
-    0
-  )
-
-  t.diagnostic(
+  expect(rollbackRecord).toBeTruthy()
+  if (!rollbackRecord) throw new Error('Missing rollbackRecord')
+  expect(rollbackRecord.context.rollbackAction).toBe('unmarkDelivered')
+  expect(
+    getEventRecords(rollbackRecords, 'news.telegram.send.success').length
+  ).toBe(0)
+  console.log(
     JSON.stringify({
       scenario: 'send_failure_rollback',
       events: [
@@ -494,8 +494,7 @@ test('delivery rollback unmarks an article when the send callback fails', async 
     })
   )
 
-  assert.equal(
-    await deliveryStore.hasDelivered('chat-rollback', 'rollback-item'),
-    false
-  )
+  expect(
+    await deliveryStore.hasDelivered('chat-rollback', 'rollback-item')
+  ).toBe(false)
 })
