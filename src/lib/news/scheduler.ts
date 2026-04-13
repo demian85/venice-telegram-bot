@@ -307,31 +307,56 @@ export class NewsScheduler {
 
     const limited = items.slice(0, this.config.maxArticlesPerPoll)
     let storedCount = 0
+    let skippedCount = 0
+    let irrelevantCount = 0
 
     for (const item of limited) {
-      const existing = await this.newsStore.getItem(item.id)
-      if (!existing) {
-        await this.newsStore.storeItem(item)
-        storedCount++
-        logger.info(
+      const exists = await this.newsStore.checkItemExists(item.id)
+      if (exists) {
+        logger.debug(
           {
-            event: 'news.item.stored',
+            event: 'news.item.duplicate_skip',
             itemId: item.id,
-            itemTitle: item.title,
-            itemSource: item.source,
+            itemUrl: item.url,
           },
-          `Stored new article: ${item.title.slice(0, 50)}...`
+          'Skipped duplicate news item before store write'
         )
+        skippedCount++
         continue
       }
 
-      logger.debug(
+      const { score, isRelevant } =
+        await this.relevanceDetector.detectRelevance(item)
+
+      if (!isRelevant) {
+        logger.debug(
+          {
+            event: 'news.item.irrelevant_skip',
+            itemId: item.id,
+            itemTitle: item.title.slice(0, 50),
+            score,
+            threshold: this.config.relevanceThreshold,
+          },
+          `Skipped irrelevant article (score ${score} < ${this.config.relevanceThreshold}): ${item.title.slice(0, 50)}...`
+        )
+        irrelevantCount++
+        continue
+      }
+
+      item.relevanceScore = score
+      item.isRelevant = isRelevant
+      await this.newsStore.storeItem(item)
+      storedCount++
+
+      logger.info(
         {
-          event: 'news.item.duplicate_skip',
+          event: 'news.item.stored',
           itemId: item.id,
-          itemUrl: item.url,
+          itemTitle: item.title,
+          itemSource: item.source,
+          relevanceScore: score,
         },
-        'Skipped duplicate news item before store write'
+        `Stored relevant article (score ${score}): ${item.title.slice(0, 50)}...`
       )
     }
 
@@ -342,9 +367,11 @@ export class NewsScheduler {
         feedCount: this.config.feeds.length,
         itemsPolled: items.length,
         itemsStored: storedCount,
+        itemsSkipped: skippedCount,
+        itemsIrrelevant: irrelevantCount,
         durationMs: pollDuration,
       },
-      `Poll complete: ${storedCount} new articles stored (${items.length} total fetched)`
+      `Poll complete: ${storedCount} stored, ${skippedCount} duplicates, ${irrelevantCount} irrelevant (${items.length} total fetched)`
     )
     logger.trace(
       {

@@ -422,7 +422,7 @@ export class Bot {
               }
             )
 
-            lines.push(`*${index + 1}. ${escapeMarkdown(article.title)}*`)
+            lines.push(`${index + 1}. ${escapeMarkdown(article.title)}`)
             lines.push(
               `📰 Source: ${escapeMarkdown(article.source)} | 📅 ${publishedStr}`
             )

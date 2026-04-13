@@ -1,10 +1,6 @@
 const PLACEHOLDER_PREFIX = '§PLH§'
 const PLACEHOLDER_SUFFIX = '§END§'
 
-/**
- * Escape special characters that would be interpreted as Markdown in Telegram.
- * Preserves intentional formatting by protecting it with placeholders first.
- */
 export function escapeMarkdown(text: string): string {
   if (!text) return ''
 
@@ -21,10 +17,9 @@ export function escapeMarkdown(text: string): string {
     return placeholders[parseInt(id, 10)] || ''
   }
 
-  // Step 1: Protect intentional formatting patterns
+  // Step 1: Protect intentional Telegram formatting patterns
   let result = text
     .replace(/`[^`]+`/g, save)
-    .replace(/\[[^\]]+\]\([^)]+\)/g, save)
     .replace(/\*[^*]+\*/g, save)
     .replace(/_[^_]+_/g, save)
 
@@ -33,6 +28,9 @@ export function escapeMarkdown(text: string): string {
     .replace(/\\/g, '\\\\')
     .replace(/\*/g, '\\*')
     .replace(/`/g, '\\`')
+    .replace(/_/g, '\\_')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
 
   // Step 3: Restore protected patterns
   const restoreRegex = new RegExp(
@@ -44,19 +42,13 @@ export function escapeMarkdown(text: string): string {
   return result
 }
 
-/**
- * Convert standard Markdown to Telegram-compatible Markdown.
- *
- * Handles:
- * - Headers (# ## ###) → Bold text
- * - Horizontal rules (---) → Dashes
- * - Preserves existing Telegram markdown
- */
 export function fullMarkdown2TgMarkdown(input: string): string {
   if (!input) return ''
 
   return (
     input
+      // Convert standard markdown bold **text** to Telegram *text*
+      .replace(/\*\*([^*]+)\*\*/g, '*$1*')
       // Convert headers (# text) to bold (*text*)
       .replace(/^#+ *(.+)$/gm, '*$1*')
       // Convert horizontal rules to visual separator

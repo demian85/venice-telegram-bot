@@ -43,6 +43,12 @@ export class NewsStore {
     return true
   }
 
+  async checkItemExists(itemId: string): Promise<boolean> {
+    const key = `${this.keyPrefix}item:${itemId}`
+    const existing = await this.redis.get(key)
+    return existing !== null
+  }
+
   private async writeItem(key: string, item: NewsItem): Promise<void> {
     await this.redis.setex(key, 7 * 24 * 60 * 60, JSON.stringify(item))
     await this.redis.zadd(

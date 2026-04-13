@@ -2,7 +2,6 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { StructuredTool } from '@langchain/core/tools'
 import type { NewsQueryService } from '@lib/news/index.js'
-import { escapeMarkdown } from '@lib/telegram/util.js'
 
 function safeEvaluate(expression: string): number {
   const sanitized = expression.replace(/[^0-9+\-*/.()\s]/g, '')
@@ -204,12 +203,10 @@ export function createRecentNewsTool(
               (article.description.length > 200 ? '...' : '')
             : ''
 
-          lines.push(`${index + 1}. ${escapeMarkdown(article.title)}`)
-          lines.push(
-            `Source: ${escapeMarkdown(article.source)} | ${publishedStr}`
-          )
+          lines.push(`${index + 1}. ${article.title}`)
+          lines.push(`Source: ${article.source} | ${publishedStr}`)
           if (description) {
-            lines.push(escapeMarkdown(description))
+            lines.push(description)
           }
           lines.push(`Read full article: ${article.url}`)
           if (article.relevanceScore !== undefined) {
@@ -227,7 +224,7 @@ export function createRecentNewsTool(
     {
       name: 'get_recent_news',
       description:
-        'Retrieve the most recent relevant news articles collected by the bot from RSS feeds. Use this when the user asks for latest news, recent headlines, recent articles, or past news items. Returns AI/tech news from sources like Planet AI, Hacker News, Google AI, and Hugging Face.',
+        'Retrieve the most recent relevant news articles collected by the bot from RSS feeds. Use this when the user asks for latest news, recent headlines, recent articles, or past news items.',
       schema: z.object({
         count: z
           .number()

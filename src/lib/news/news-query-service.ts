@@ -39,30 +39,49 @@ export class NewsQueryService {
 
   async getRecentNews(limit: number): Promise<RecentNewsItem[]> {
     const clampedLimit = Math.max(1, Math.min(10, limit))
-    const ids = await this.redis.zrevrange(
-      `${this.keyPrefix}items`,
-      0,
-      clampedLimit - 1
-    )
+    const totalCount = await this.redis.zcard(`${this.keyPrefix}items`)
 
     const scoredItems: RecentNewsItem[] = []
     const unscoredItems: RecentNewsItem[] = []
 
-    for (const id of ids) {
-      const item = await this.getNewsItem(id)
-      if (!item) continue
+    let offset = 0
+    const batchSize = 20
+    const maxOffset = 100
 
-      if (
-        item.relevanceScore !== undefined &&
-        item.relevanceScore >= this.relevanceThreshold
-      ) {
-        scoredItems.push(item)
-      } else if (item.relevanceScore === undefined) {
-        unscoredItems.push(item)
+    while (
+      scoredItems.length < clampedLimit &&
+      offset < totalCount &&
+      offset < maxOffset
+    ) {
+      const ids = await this.redis.zrevrange(
+        `${this.keyPrefix}items`,
+        offset,
+        offset + batchSize - 1
+      )
+
+      if (ids.length === 0) break
+
+      for (const id of ids) {
+        const item = await this.getNewsItem(id)
+        if (!item) continue
+
+        if (
+          item.relevanceScore !== undefined &&
+          item.relevanceScore >= this.relevanceThreshold
+        ) {
+          scoredItems.push(item)
+          if (scoredItems.length >= clampedLimit) break
+        } else if (item.relevanceScore === undefined) {
+          unscoredItems.push(item)
+        }
       }
+
+      offset += batchSize
     }
 
-    return scoredItems.length > 0 ? scoredItems : unscoredItems
+    return scoredItems.length > 0
+      ? scoredItems.slice(0, clampedLimit)
+      : unscoredItems.slice(0, clampedLimit)
   }
 
   async fetchAndGetRecentNews(limit: number): Promise<RecentNewsItem[]> {

@@ -107,7 +107,7 @@ export class AgentService {
     try {
       logger.debug(
         {
-          messageCount: messages.length,
+          messages,
           toolCount: this.tools.length,
           toolNames: this.tools.map((t) => t.name),
         },
