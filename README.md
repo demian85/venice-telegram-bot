@@ -53,7 +53,7 @@ In groups, `/subscribe`, `/unsubscribe`, and `/interval` require admin privilege
 
 ## News System
 
-The bot automatically collects and delivers AI/tech news from RSS feeds.
+The bot automatically collects and delivers news from RSS feeds.
 
 ### News Storage
 
@@ -72,7 +72,7 @@ News articles are stored in **Redis** with the following structure:
 ### How News Works
 
 1. **Collection**: Every 5 minutes (configurable), the bot polls all configured RSS feeds
-2. **Relevance scoring**: Each article is scored 0-100 by an LLM for relevance to AI/tech topics
+2. **Relevance scoring**: Each article is scored 0-100 by an LLM for relevance to selected topics
 3. **Storage**: Articles scoring above the threshold (default: 70/100) are stored in Redis
 4. **Delivery**: Subscribed chats receive relevant articles automatically based on their configured interval
 5. **Manual access**: Users can request recent news via `/news [count]` command or by asking the bot

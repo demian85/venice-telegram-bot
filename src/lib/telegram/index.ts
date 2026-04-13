@@ -12,6 +12,8 @@ import {
   minNewsIntervalSeconds,
   type NewsChatSubscription,
   NewsQueryService,
+  type NewsItem,
+  type RecentNewsItem,
 } from '@lib/news/index.js'
 import { getRedisClient } from '@lib/redis/index.js'
 import { getContextChatScope } from './scope.js'
@@ -129,6 +131,10 @@ export class Bot {
     {
       command: 'interval',
       description: 'Show or set news interval',
+    },
+    {
+      command: 'summary',
+      description: 'Summarize recent AI news (last 24h)',
     },
   ] as const
 
@@ -539,6 +545,66 @@ export class Bot {
           )
         }
       },
+      summary: async (ctx) => {
+        if (!this.newsQueryService) {
+          await ctx.reply(
+            'News retrieval is not configured. Please try again later.'
+          )
+          return
+        }
+
+        try {
+          await ctx.sendChatAction('typing')
+          const articles = await this.getRecentNewsLast24Hours(10)
+
+          if (articles.length === 0) {
+            await ctx.reply(
+              "I don't have any news articles from the last 24 hours. News is collected periodically from configured sources. Try again later!"
+            )
+            return
+          }
+
+          const newsContext = articles
+            .map((article, index) => {
+              const lines = [
+                `${index + 1}. ${article.title}`,
+                `Source: ${article.source}`,
+              ]
+              if (article.description) {
+                lines.push(`Description: ${article.description}`)
+              }
+              if (article.relevanceScore !== undefined) {
+                lines.push(`Relevance Score: ${article.relevanceScore}/100`)
+              }
+              lines.push(`URL: ${article.url}`)
+              return lines.join('\n')
+            })
+            .join('\n\n')
+
+          const prompt = `Summarize the most relevant and important news from the following articles collected in the last 24 hours. Focus on the key developments and trends. Present your summary in a clear, concise format highlighting the most significant items:\n\n${newsContext}`
+
+          const response = await this.agentService?.invokeLive(ctx.chatScope, {
+            text: prompt,
+          })
+
+          await ctx.reply(
+            formatTelegramMarkdownReply(
+              response || 'Sorry, I could not generate a summary at this time.'
+            ),
+            {
+              parse_mode: 'Markdown',
+            }
+          )
+        } catch (error) {
+          logger.error(
+            { error, chatId: ctx.chat?.id },
+            'Failed to generate news summary'
+          )
+          await ctx.reply(
+            "Sorry, I couldn't generate a summary right now. Please try again later."
+          )
+        }
+      },
     }
 
     this.bot.start(async (ctx) => {
@@ -782,6 +848,7 @@ export class Bot {
       '/clear - clear stored conversation history for this chat scope',
       '/info - show chat scope and subscription details',
       '/news [count] - get recent AI news (1-10 articles, default: 5)',
+      '/summary - summarize the most relevant AI news from the last 24 hours',
       '/subscribe - enable relevant AI news delivery for this chat',
       '/unsubscribe - disable relevant AI news delivery for this chat',
       `/interval [seconds] - show or set the news cadence (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds})`,
@@ -894,5 +961,52 @@ export class Bot {
         this.getMessageEntities(ctx)
       )
     )
+  }
+
+  private async getRecentNewsLast24Hours(
+    maxCount: number
+  ): Promise<RecentNewsItem[]> {
+    if (!this.newsQueryService) {
+      return []
+    }
+
+    const redis = (this.newsQueryService as any).redis as Redis
+    const keyPrefix = 'news:'
+    const now = Date.now()
+    const oneDayAgo = now - 24 * 60 * 60 * 1000
+
+    const ids = await redis.zrevrangebyscore(
+      `${keyPrefix}items`,
+      '+inf',
+      oneDayAgo
+    )
+
+    const items: RecentNewsItem[] = []
+    for (const id of ids.slice(0, maxCount)) {
+      const data = await redis.get(`${keyPrefix}item:${id}`)
+      if (!data) continue
+
+      const item = JSON.parse(data) as Omit<
+        NewsItem,
+        'publishedAt' | 'fetchedAt' | 'legacyBroadcastedAt'
+      > & {
+        publishedAt: string
+        fetchedAt: string
+        legacyBroadcastedAt?: string
+      }
+
+      items.push({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        source: item.source,
+        publishedAt: new Date(item.publishedAt),
+        fetchedAt: new Date(item.fetchedAt),
+        relevanceScore: item.relevanceScore,
+        description: item.description,
+      })
+    }
+
+    return items
   }
 }
