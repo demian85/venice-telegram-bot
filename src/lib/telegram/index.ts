@@ -768,13 +768,15 @@ export class Bot {
       return false
     }
 
+    const expectedMention = `@${this.config.telegram.botUsername}`
+
     return this.getMessageEntities(ctx).some(
       (entity) =>
         entity.type === 'mention' &&
         rawMessageText.substring(
           entity.offset,
           entity.offset + entity.length
-        ) === this.config.telegram.botUsername
+        ) === expectedMention
     )
   }
 
