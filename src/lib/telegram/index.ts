@@ -275,11 +275,11 @@ export class Bot {
   ): Promise<void> {
     const lines = [
       `*${escapeMarkdown(article.title)}*`,
-      `— ${createMarkdownLink('Read more', article.url)}`,
+      `${createMarkdownLink('Read more', article.url)}`,
       `\nRelevance score: ${article.relevanceScore}`,
     ]
 
-    if (article.description) {
+    if (article.description && article.description.split(/\s+/).length > 1) {
       lines.splice(2, 0, escapeMarkdown(article.description))
     }
 
