@@ -16,6 +16,7 @@
       "https://www.cncf.io/feed/"
     ],
     "pollIntervalMinutes": 5,
+    "deliveryCheckIntervalSeconds": 300,
     "relevanceThreshold": 70,
     "maxArticlesPerPoll": 10,
     "topics": [

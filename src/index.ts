@@ -40,7 +40,8 @@ async function main() {
   )
 
   await bot.init()
-  logger.info('Bot initialized, preparing to start news scheduler')
+
+  logger.info('Bot initialized')
 
   const newsScheduler = new NewsScheduler(
     {
@@ -56,7 +57,6 @@ async function main() {
       newsStore,
     }
   )
-  logger.info('News scheduler instance created')
 
   try {
     logger.info('Starting news scheduler...')

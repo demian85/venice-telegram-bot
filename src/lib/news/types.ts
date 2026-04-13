@@ -34,11 +34,12 @@ export interface NewsDeliveryRecord {
 export interface NewsConfig {
   feeds: string[]
   pollIntervalMinutes: number
+  deliveryCheckIntervalSeconds: number
   relevanceThreshold: number
   maxArticlesPerPoll: number
   topics: string[]
 }
 
 export const defaultNewsIntervalSeconds = 300
-export const minNewsIntervalSeconds = 60
+export const minNewsIntervalSeconds = 300
 export const maxNewsIntervalSeconds = 86400

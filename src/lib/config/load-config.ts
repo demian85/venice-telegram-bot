@@ -156,6 +156,11 @@ function validateNewsConfig(value: JsonValue, sourcePath: string) {
       'news.pollIntervalMinutes',
       sourcePath
     ),
+    deliveryCheckIntervalSeconds: expectNumber(
+      value.deliveryCheckIntervalSeconds,
+      'news.deliveryCheckIntervalSeconds',
+      sourcePath
+    ),
     relevanceThreshold: expectNumber(
       value.relevanceThreshold,
       'news.relevanceThreshold',

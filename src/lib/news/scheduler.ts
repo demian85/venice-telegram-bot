@@ -9,7 +9,6 @@ import { NewsDeliveryStore } from './news-delivery-store.js'
 import type { ChatOpenAI } from '@langchain/openai'
 import logger from '@lib/logger.js'
 
-const deliveryIntervalMs = 60 * 1000
 const startupJobRegistrations = [
   { name: 'poll-news', jobId: 'poll-news-startup' },
   { name: 'deliver-news', jobId: 'deliver-news-startup' },
@@ -172,6 +171,7 @@ export class NewsScheduler {
 
   async start(): Promise<void> {
     const pollIntervalMs = this.config.pollIntervalMinutes * 60 * 1000
+    const deliveryIntervalMs = this.config.deliveryCheckIntervalSeconds * 1000
     const repeatJobRegistrations = [
       {
         name: 'poll-news',
@@ -234,7 +234,7 @@ export class NewsScheduler {
       {
         event: 'news.scheduler.started',
         pollIntervalMinutes: this.config.pollIntervalMinutes,
-        deliveryIntervalMs,
+        deliveryCheckIntervalSeconds: this.config.deliveryCheckIntervalSeconds,
         feedCount: this.config.feeds.length,
         relevanceThreshold: this.config.relevanceThreshold,
       },

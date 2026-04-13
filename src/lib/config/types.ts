@@ -8,6 +8,7 @@ export interface TelegramConfig {
 export interface NewsAppConfig {
   feeds: string[]
   pollIntervalMinutes: number
+  deliveryCheckIntervalSeconds: number
   relevanceThreshold: number
   maxArticlesPerPoll: number
   topics: string[]

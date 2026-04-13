@@ -14,7 +14,7 @@ const RelevanceScoreSchema = z.object({
     ),
   reasoning: z
     .string()
-    .optional()
+    .nullable()
     .describe('Brief explanation of why this score was given'),
 })
 
@@ -45,6 +45,7 @@ export class RelevanceDetector {
       },
       'Starting relevance scoring'
     )
+
     const startTime = Date.now()
     const content =
       `${item.title}\n${item.description || ''}\n${item.content || ''}`.slice(
@@ -69,8 +70,8 @@ Scoring guidelines:
       const result: RelevanceScore = await structuredModel.invoke(prompt)
       const score = Math.min(100, Math.max(0, result.score))
       const isRelevant = score >= this.relevanceThreshold
-
       const duration = Date.now() - startTime
+
       logger.info({
         event: 'news.score.result',
         itemId: item.id,
@@ -80,6 +81,7 @@ Scoring guidelines:
         threshold: this.relevanceThreshold,
         durationMs: duration,
       })
+
       logger.trace(
         {
           event: 'news.score.complete',
