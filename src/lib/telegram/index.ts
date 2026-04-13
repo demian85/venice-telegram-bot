@@ -14,6 +14,8 @@ import {
   NewsQueryService,
   type NewsItem,
   type RecentNewsItem,
+  normalizeTopics,
+  formatTopics,
 } from '@lib/news/index.js'
 import { getRedisClient } from '@lib/redis/index.js'
 import { getContextChatScope } from './scope.js'
@@ -133,6 +135,10 @@ export class Bot {
     {
       command: 'interval',
       description: 'Show or set news interval',
+    },
+    {
+      command: 'topics',
+      description: 'Show or set news topics',
     },
     {
       command: 'summary',
@@ -524,6 +530,51 @@ export class Bot {
           )
         }
       },
+      topics: async (ctx) => {
+        if (!(await this.ensureSubscriptionCommandAccess(ctx, 'topics'))) {
+          return
+        }
+
+        const args = this.getCommandArguments(ctx)
+        const chatId = this.getSubscriptionChatId(ctx)
+
+        if (!args) {
+          const subscription = await this.getSubscriptionStatus(chatId)
+          const currentTopics = subscription?.topics?.length
+            ? formatTopics(subscription.topics)
+            : formatTopics(this.config.news.topics)
+
+          await ctx.reply(
+            [
+              `Current topics: ${currentTopics}`,
+              `Use /topics <comma-separated list> to customize.`,
+              `Example: /topics AI, developer tools, automation`,
+            ].join('\n')
+          )
+          return
+        }
+
+        const normalizedTopics = normalizeTopics(args)
+
+        if (normalizedTopics.length === 0) {
+          await ctx.reply(
+            'Please provide at least one topic. Example: /topics AI, developer tools'
+          )
+          return
+        }
+
+        const subscription = await this.chatSubscriptionStore.setTopics(
+          chatId,
+          normalizedTopics
+        )
+
+        await ctx.reply(
+          this.buildSubscriptionMutationMessage(
+            `Topics updated to: ${formatTopics(normalizedTopics)}`,
+            subscription
+          )
+        )
+      },
       summary: async (ctx) => {
         if (!this.newsQueryService) {
           await ctx.reply(
@@ -808,8 +859,8 @@ export class Bot {
     )
     const adminScopeNote =
       ctx.chatType === 'group'
-        ? 'In groups, /subscribe, /unsubscribe, and /interval require an admin.'
-        : 'In private chats, /subscribe, /unsubscribe, and /interval are self-service.'
+        ? 'In groups, /subscribe, /unsubscribe, /interval, and /topics require an admin.'
+        : 'In private chats, /subscribe, /unsubscribe, /interval, and /topics are self-service.'
 
     return [
       'Operational commands:',
@@ -823,6 +874,7 @@ export class Bot {
       '/subscribe - enable relevant news delivery for this chat',
       '/unsubscribe - disable relevant news delivery for this chat',
       `/interval [seconds] - show or set the news cadence (${minNewsIntervalSeconds}-${maxNewsIntervalSeconds})`,
+      '/topics [list] - show or set news topics (comma-separated)',
       '',
       this.getIngressSummary(ctx),
       adminScopeNote,
@@ -868,7 +920,7 @@ export class Bot {
 
   private async ensureSubscriptionCommandAccess(
     ctx: TelegramContext,
-    command: 'subscribe' | 'unsubscribe' | 'interval'
+    command: 'subscribe' | 'unsubscribe' | 'interval' | 'topics'
   ): Promise<boolean> {
     if (ctx.chatType === 'private') {
       return true

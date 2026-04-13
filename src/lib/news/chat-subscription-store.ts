@@ -6,6 +6,17 @@ import {
   type NewsChatSubscription,
 } from './types.js'
 
+export function normalizeTopics(topicsInput: string): string[] {
+  return topicsInput
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 0)
+}
+
+export function formatTopics(topics: string[]): string {
+  return topics.join(', ')
+}
+
 export class ChatSubscriptionStore {
   private readonly keyPrefix = 'news:chat-subscription:'
   private readonly indexKey = 'news:chat-subscriptions'
@@ -129,6 +140,24 @@ export class ChatSubscriptionStore {
       ...current,
       lastSentAt: sentAt,
       updatedAt: sentAt,
+    }
+
+    await this.saveSubscription(next)
+
+    return next
+  }
+
+  async setTopics(
+    chatId: string,
+    topics: string[],
+    now: Date = new Date()
+  ): Promise<NewsChatSubscription> {
+    const current = await this.getOrCreateSubscription(chatId, now)
+
+    const next: NewsChatSubscription = {
+      ...current,
+      topics,
+      updatedAt: now,
     }
 
     await this.saveSubscription(next)

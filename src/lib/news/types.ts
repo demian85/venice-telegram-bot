@@ -23,6 +23,7 @@ export interface NewsChatSubscription {
   subscribedAt?: Date
   unsubscribedAt?: Date
   lastSentAt?: Date
+  topics?: string[]
 }
 
 export interface NewsDeliveryRecord {

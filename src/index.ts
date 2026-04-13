@@ -25,7 +25,7 @@ async function main() {
   const tools = createAgentTools({ newsQueryService })
 
   const bot = new Bot(
-    { telegram: config.telegram },
+    { telegram: config.telegram, news: config.news },
     {
       agentModel: models.chat,
       summarizerModel: models.summarizer,

@@ -61,6 +61,9 @@ function createBotHarness(options: { imageSupport?: boolean } = {}) {
       botUsername: '@bot',
       whitelistedUsers: [],
     },
+    news: {
+      topics: ['AI', 'technology'],
+    },
   }
 
   const bot = new Bot(

@@ -3,4 +3,7 @@ export interface Config {
     botUsername: string
     whitelistedUsers: string[]
   }
+  news: {
+    topics: string[]
+  }
 }
