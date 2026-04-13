@@ -403,7 +403,7 @@ export class Bot {
 
           if (articles.length === 0) {
             await ctx.reply(
-              "I don't have any relevant news articles right now. News is collected periodically from AI and tech sources. Try again in a few minutes!"
+              "I don't have any relevant news articles right now. News is collected periodically from configured sources. Try again in a few minutes!"
             )
             return
           }

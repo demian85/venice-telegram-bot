@@ -185,11 +185,11 @@ export function createRecentNewsTool(
         const articles = await newsQueryService.fetchAndGetRecentNews(count)
 
         if (articles.length === 0) {
-          return "I don't have any relevant news articles available right now. News is collected periodically from various AI and tech sources. Try again in a few minutes, or subscribe to get news delivered automatically with /subscribe."
+          return "I don't have any relevant news articles available right now. News is collected periodically from various sources. Try again in a few minutes, or subscribe to get news delivered automatically with /subscribe."
         }
 
         const lines = [
-          `Here are the latest ${articles.length} relevant AI news articles:`,
+          `Here are the latest ${articles.length} relevant news articles:`,
           '',
         ]
 
