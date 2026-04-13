@@ -183,7 +183,7 @@ export function createRecentNewsTool(
   return tool(
     async ({ count }) => {
       try {
-        const articles = await newsQueryService.getRecentNews(count)
+        const articles = await newsQueryService.fetchAndGetRecentNews(count)
 
         if (articles.length === 0) {
           return "I don't have any relevant news articles available right now. News is collected periodically from various AI and tech sources. Try again in a few minutes, or subscribe to get news delivered automatically with /subscribe."

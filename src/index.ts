@@ -19,6 +19,7 @@ async function main() {
   const newsQueryService = new NewsQueryService({
     redis,
     relevanceThreshold: config.news.relevanceThreshold,
+    feeds: config.news.feeds,
   })
 
   const tools = createAgentTools({ newsQueryService })
@@ -39,6 +40,7 @@ async function main() {
   )
 
   await bot.init()
+  logger.info('Bot initialized, preparing to start news scheduler')
 
   const newsScheduler = new NewsScheduler(
     {
@@ -54,8 +56,10 @@ async function main() {
       newsStore,
     }
   )
+  logger.info('News scheduler instance created')
 
   try {
+    logger.info('Starting news scheduler...')
     await newsScheduler.start()
     logger.info('News scheduler started successfully')
   } catch (err) {

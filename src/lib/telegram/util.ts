@@ -32,11 +32,6 @@ export function escapeMarkdown(text: string): string {
   result = result
     .replace(/\\/g, '\\\\')
     .replace(/\*/g, '\\*')
-    .replace(/_/g, '\\_')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
     .replace(/`/g, '\\`')
 
   // Step 3: Restore protected patterns

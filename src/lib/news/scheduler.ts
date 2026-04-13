@@ -116,7 +116,6 @@ export class NewsScheduler {
       new Worker(
         'news-polling',
         async (job) => {
-          // NOTE: These lifecycle events are debug-only; set LOG_LEVEL=debug to see them.
           logger.debug(
             {
               event: 'news.job.start',
@@ -251,7 +250,7 @@ export class NewsScheduler {
   private async pollFeeds(): Promise<void> {
     logger.trace(
       { event: 'news.poll.start', feedCount: this.config.feeds.length },
-      'Starting pollFeeds cycle'
+      'Starting news feed polling cycle'
     )
     const startTime = Date.now()
 
@@ -322,7 +321,7 @@ export class NewsScheduler {
         durationMs: pollDuration,
         itemsStored: storedCount,
       },
-      'pollFeeds cycle completed'
+      'Poll cycle ended'
     )
   }
 
@@ -367,7 +366,7 @@ export class NewsScheduler {
     const now = new Date()
     logger.trace(
       { event: 'news.delivery.start' },
-      'Starting deliverRelevantArticles cycle'
+      'Starting news delivery cycle'
     )
     const startTime = Date.now()
 
@@ -555,7 +554,7 @@ export class NewsScheduler {
         durationMs: deliveryDuration,
         subscriptionsProcessed: subscriptions.length,
       },
-      'deliverRelevantArticles cycle completed'
+      'Delivery cycle completed'
     )
   }
 

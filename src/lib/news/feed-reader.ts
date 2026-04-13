@@ -35,7 +35,7 @@ export class FeedReader {
         }
 
         const item: NewsItem = {
-          id: `${link}:${Date.now()}`,
+          id: link,
           source: feed.title || link,
           feedUrl: link,
           title: feedEntry.title || 'Untitled',

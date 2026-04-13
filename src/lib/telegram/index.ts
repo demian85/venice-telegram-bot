@@ -229,16 +229,44 @@ export class Bot {
       await ctx.answerInlineQuery([])
     })
 
-    process.once('SIGINT', () => this.bot.stop('SIGINT'))
-    process.once('SIGTERM', () => this.bot.stop('SIGTERM'))
+    process.once('SIGINT', () => this.gracefulShutdown('SIGINT'))
+    process.once('SIGTERM', () => this.gracefulShutdown('SIGTERM'))
+    process.on('uncaughtException', (error) => {
+      logger.error({ error }, 'Uncaught exception - shutting down')
+      this.gracefulShutdown('uncaughtException')
+    })
+    process.on('unhandledRejection', (reason) => {
+      logger.error({ reason }, 'Unhandled rejection')
+    })
   }
 
   async init() {
     await this.bot.telegram.setMyCommands(this.registeredCommands)
     await this.agentService?.initialize()
-    await this.bot.launch(() => {
-      logger.info({ config: this.config }, 'Telegram bot is up and running')
-    })
+
+    // Start bot in background - launch() blocks until shutdown
+    this.bot
+      .launch(() => {
+        logger.info({ config: this.config }, 'Telegram bot is up and running')
+      })
+      .catch((error: any) => {
+        if (error?.response?.error_code === 409) {
+          logger.error(
+            { error: error.message },
+            'Another bot instance is already running (409 Conflict). Kill all node processes and try again.'
+          )
+          throw new Error(
+            'Telegram bot 409 Conflict: Another instance is already running. Run: pkill -f "venice-telegram-bot.*tsx" && sleep 2'
+          )
+        }
+        throw error
+      })
+  }
+
+  private gracefulShutdown(signal: string): void {
+    logger.info({ signal }, 'Shutting down bot gracefully...')
+    this.bot.stop(signal)
+    process.exit(0)
   }
 
   async sendNewsArticle(
@@ -371,7 +399,8 @@ export class Bot {
 
         try {
           await ctx.sendChatAction('typing')
-          const articles = await this.newsQueryService.getRecentNews(count)
+          const articles =
+            await this.newsQueryService.fetchAndGetRecentNews(count)
 
           if (articles.length === 0) {
             await ctx.reply(
