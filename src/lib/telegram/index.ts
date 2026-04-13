@@ -274,10 +274,9 @@ export class Bot {
     article: BotNewsArticle
   ): Promise<void> {
     const lines = [
-      '*Relevant AI news*',
       `*${escapeMarkdown(article.title)}*`,
-      createMarkdownLink('Read more', article.url),
-      `Relevance score: ${article.relevanceScore}`,
+      `— ${createMarkdownLink('Read more', article.url)}`,
+      `\nRelevance score: ${article.relevanceScore}`,
     ]
 
     if (article.description) {
@@ -296,7 +295,7 @@ export class Bot {
     logger.debug(logContext, 'Starting Telegram news delivery')
 
     try {
-      await this.bot.telegram.sendMessage(chatId, lines.join('\n\n'), {
+      await this.bot.telegram.sendMessage(chatId, lines.join('\n'), {
         parse_mode: 'Markdown',
         link_preview_options: {
           is_disabled: false,

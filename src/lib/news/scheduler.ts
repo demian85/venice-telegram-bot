@@ -196,6 +196,8 @@ export class NewsScheduler {
       `Starting news scheduler with ${this.config.feeds.length} feeds`
     )
 
+    await this.cleanRepeatableJobs()
+
     for (const job of startupJobRegistrations) {
       await this.queue.add(job.name, {}, { jobId: job.jobId })
       logger.info(
@@ -245,6 +247,35 @@ export class NewsScheduler {
   async stop(): Promise<void> {
     await this.queue.close()
     await this.worker.close()
+  }
+
+  private async cleanRepeatableJobs(): Promise<void> {
+    try {
+      const queue = this.queue as Queue
+      const jobSchedulers = await queue.getJobSchedulers()
+
+      for (const scheduler of jobSchedulers) {
+        if (!scheduler.id) {
+          continue
+        }
+        await queue.removeJobScheduler(scheduler.id)
+        logger.debug(
+          {
+            event: 'news.scheduler.clean_repeatable',
+            schedulerId: scheduler.id,
+          },
+          `Cleaned up job scheduler: ${scheduler.id}`
+        )
+      }
+    } catch (error) {
+      logger.warn(
+        {
+          event: 'news.scheduler.clean_repeatable.warn',
+          err: error,
+        },
+        'Failed to clean repeatable jobs (may be using mocked queue in tests)'
+      )
+    }
   }
 
   private async pollFeeds(): Promise<void> {

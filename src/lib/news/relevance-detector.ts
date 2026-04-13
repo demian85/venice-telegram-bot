@@ -53,15 +53,15 @@ export class RelevanceDetector {
         2000
       )
 
-    const prompt = `Analyze this article and rate its relevance to AI and technology topics on a scale of 0-100.
+    const prompt = `Analyze this article and rate its relevance on a scale of 0-100, based on the topics of interest.
 
 Article: ${content}
 
 Topics of interest: ${this.topics.join(', ')}
 
 Scoring guidelines:
-- 80-100: Highly relevant (directly covers AI/tech topics)
-- 60-79: Somewhat relevant (mentions AI/tech in passing)
+- 80-100: Highly relevant (directly covers most of the topics)
+- 60-79: Somewhat relevant (mentions a few topics)
 - 0-59: Not relevant (unrelated to these topics)`
 
     try {
