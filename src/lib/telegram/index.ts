@@ -194,7 +194,7 @@ export class Bot {
             !whitelistedUsers.includes(privateChat.username)))
       ) {
         await ctx.reply('Forbidden: username is not whitelisted')
-        throw new Error('Forbidden: username is not whitelisted')
+        return
       }
 
       ctx.isMention = this.isMentioned(ctx)
@@ -324,6 +324,43 @@ export class Bot {
         'Telegram news delivery succeeded'
       )
     } catch (error) {
+      const telegramError = error as {
+        response?: { error_code?: number; description?: string }
+      }
+      const errorCode = telegramError.response?.error_code
+      const errorDescription = telegramError.response?.description
+
+      const isChatDeleted =
+        errorCode === 403 &&
+        (errorDescription?.includes('group chat was deleted') ||
+          errorDescription?.includes('the group chat was deleted') ||
+          errorDescription?.includes('bot was kicked') ||
+          errorDescription?.includes('bot is not a member'))
+
+      if (isChatDeleted) {
+        logger.warn(
+          {
+            ...logContext,
+            event: 'news.telegram.send.chat_deleted',
+            errorCode,
+            errorDescription,
+          },
+          'Chat no longer accessible, removing subscription'
+        )
+
+        await this.chatSubscriptionStore.deleteSubscription(chatId)
+
+        logger.info(
+          {
+            ...logContext,
+            event: 'news.telegram.send.subscription_removed',
+          },
+          'Removed news subscription for deleted/inaccessible chat'
+        )
+
+        return
+      }
+
       logger.error(
         {
           ...logContext,

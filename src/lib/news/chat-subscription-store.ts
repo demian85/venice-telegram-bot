@@ -222,6 +222,11 @@ export class ChatSubscriptionStore {
     }
   }
 
+  async deleteSubscription(chatId: string): Promise<void> {
+    await this.redis.del(this.getKey(chatId))
+    await this.redis.srem(this.indexKey, chatId)
+  }
+
   private getKey(chatId: string): string {
     return `${this.keyPrefix}${chatId}`
   }
