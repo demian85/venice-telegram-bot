@@ -1,0 +1,214 @@
+import { test, expect } from 'vitest'
+import { AgentService } from '../src/lib/agent/index.js'
+import { SummaryStore } from '../src/lib/memory/index.js'
+import { buildPersistedTextShadow } from '../src/lib/agent/content.js'
+import { InMemoryRedis } from './test-helpers.js'
+
+function createStubModel(modelName: string) {
+  return {
+    modelName,
+    invoke: async () => ({ content: 'summary text' }),
+  } as never
+}
+
+test('vision-capable role wiring keeps live image input rich and persists a text shadow', async () => {
+  const redis = new InMemoryRedis()
+  const agentInvocations: unknown[] = []
+  const service = new AgentService({
+    redis: redis.asRedis(),
+    agentModel: createStubModel('gpt-5.4-mini'),
+    summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: true,
+    tools: [],
+  })
+
+  ;(
+    service as never as {
+      agent: { invoke(payload: unknown): Promise<unknown> }
+    }
+  ).agent = {
+    invoke: async (payload) => {
+      agentInvocations.push(payload)
+      return {
+        messages: [{ content: 'vision reply' }],
+      }
+    },
+  }
+
+  expect(service.supportsImageInput()).toBe(true)
+
+  const reply = await service.invokeLive('private:1', {
+    text: 'Describe this image',
+    imageUrl: 'https://images.test/cat.png',
+  })
+
+  expect(reply).toBe('vision reply')
+
+  const payload = agentInvocations[0] as {
+    messages: Array<{ role: string; content: unknown }>
+  }
+  const lastMessage = payload.messages.at(-1)
+
+  expect(lastMessage).toEqual({
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: 'Describe this image',
+      },
+      {
+        type: 'image_url',
+        image_url: {
+          url: 'https://images.test/cat.png',
+        },
+      },
+    ],
+  })
+
+  const history = await service.getHistory('private:1')
+  expect(
+    history
+      .map((message: { role: string; content: string }) => ({
+        role: message.role,
+        content: message.content,
+      }))
+      .sort(
+        (
+          left: { role: string; content: string },
+          right: { role: string; content: string }
+        ) =>
+          `${left.role}:${left.content}`.localeCompare(
+            `${right.role}:${right.content}`
+          )
+      )
+  ).toEqual(
+    [
+      {
+        role: 'assistant',
+        content: 'vision reply',
+      },
+      {
+        role: 'user',
+        content: '[image attached]\nCaption: Describe this image',
+      },
+    ].sort((left, right) =>
+      `${left.role}:${left.content}`.localeCompare(
+        `${right.role}:${right.content}`
+      )
+    )
+  )
+})
+
+test('non-vision role wiring falls back to text-shadow input for live and persisted memory', async () => {
+  const redis = new InMemoryRedis()
+  const agentInvocations: unknown[] = []
+  const service = new AgentService({
+    redis: redis.asRedis(),
+    agentModel: createStubModel('gpt-5.4-nano'),
+    summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: false,
+    tools: [],
+  })
+
+  ;(
+    service as never as {
+      agent: { invoke(payload: unknown): Promise<unknown> }
+    }
+  ).agent = {
+    invoke: async (payload) => {
+      agentInvocations.push(payload)
+      return {
+        messages: [{ content: 'text-only reply' }],
+      }
+    },
+  }
+
+  expect(service.supportsImageInput()).toBe(false)
+  expect(
+    buildPersistedTextShadow({ imageUrl: 'https://images.test/only.png' })
+  ).toBe('[image attached]')
+
+  await service.invokeLive('private:2', {
+    text: 'What is in this image?',
+    imageUrl: 'https://images.test/only.png',
+  })
+  await service.persistUserMessage('private:2', {
+    imageUrl: 'https://images.test/follow-up.png',
+  })
+
+  const payload = agentInvocations[0] as {
+    messages: Array<{ role: string; content: unknown }>
+  }
+
+  expect(payload.messages.at(-1)).toEqual({
+    role: 'user',
+    content: '[image attached]\nCaption: What is in this image?',
+  })
+
+  const history = await service.getHistory('private:2')
+  expect(
+    history.map((message: { content: string }) => message.content).sort()
+  ).toEqual(
+    [
+      '[image attached]',
+      '[image attached]\nCaption: What is in this image?',
+      'text-only reply',
+    ].sort()
+  )
+})
+
+test('clearHistory deletes summaries and only clears the targeted chat scope', async () => {
+  const redis = new InMemoryRedis()
+  const service = new AgentService({
+    redis: redis.asRedis(),
+    agentModel: createStubModel('gpt-5.4-mini'),
+    summarizerModel: createStubModel('gpt-5.4-nano'),
+    supportsVision: true,
+    tools: [],
+  })
+  const summaryStore = new SummaryStore(redis.asRedis())
+
+  await service.persistUserMessage('group:1', { text: 'alpha' })
+  await service.persistUserMessage('group:2', { text: 'beta' })
+  await summaryStore.saveSummary({
+    level: 'daily',
+    chatId: 'group:1',
+    startTime: 1,
+    endTime: 2,
+    summary: 'group one daily',
+    messageCount: 1,
+    keyTopics: ['alpha'],
+    createdAt: 3,
+  })
+  await summaryStore.saveSummary({
+    level: 'monthly',
+    chatId: 'group:1',
+    startTime: 1,
+    endTime: 4,
+    summary: 'group one monthly',
+    messageCount: 1,
+    keyTopics: ['alpha'],
+    createdAt: 5,
+  })
+  await summaryStore.saveSummary({
+    level: 'daily',
+    chatId: 'group:2',
+    startTime: 1,
+    endTime: 2,
+    summary: 'group two daily',
+    messageCount: 1,
+    keyTopics: ['beta'],
+    createdAt: 3,
+  })
+
+  await service.clearHistory('group:1')
+
+  expect(await service.getHistory('group:1')).toEqual([])
+  expect((await summaryStore.getSummaries('group:1', 'daily')).length).toBe(0)
+  expect((await summaryStore.getSummaries('group:1', 'monthly')).length).toBe(0)
+
+  const preservedHistory = await service.getHistory('group:2')
+  expect(preservedHistory.length).toBe(1)
+  expect(preservedHistory[0]?.content).toBe('beta')
+  expect((await summaryStore.getSummaries('group:2', 'daily')).length).toBe(1)
+})

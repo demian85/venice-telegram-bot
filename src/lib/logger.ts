@@ -1,17 +1,12 @@
-import logger from 'pino'
+import { pino } from 'pino'
 
 const loggerOptions = {
-  name: 'food-genius',
+  name: 'venice-assistant-bot',
   level: process.env.LOG_LEVEL || 'info',
   serializers: {
-    err: logger.stdSerializers.err,
+    err: pino.stdSerializers.err,
   },
   base: null,
 }
 
-export default logger(
-  loggerOptions,
-  process.env.NODE_ENV !== 'test'
-    ? logger.destination(1)
-    : logger.destination('./log')
-)
+export default pino(loggerOptions, pino.destination(1))

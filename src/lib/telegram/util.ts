@@ -1,62 +1,186 @@
-import { TextCompletionResponse } from '@lib/types'
-import { MessageContext } from './types'
+const PLACEHOLDER_PREFIX = '§PLH§'
+const PLACEHOLDER_SUFFIX = '§END§'
 
-export function escapeMarkdownV2(text: string): string {
-  // Define the markdown v2 reserved characters
-  const reservedChars = [
-    '_',
-    '*',
-    '[',
-    ']',
-    '(',
-    ')',
-    '~',
-    '`',
-    '>',
-    '#',
-    '+',
-    '-',
-    '=',
-    '|',
-    '{',
-    '}',
-    '.',
-    '!',
-  ]
+export function escapeMarkdown(text: string): string {
+  if (!text) return ''
 
-  reservedChars.forEach((char) => {
-    text = text.replaceAll(char, '\\' + char)
-  })
+  const placeholders: string[] = []
+  let counter = 0
 
-  return text
-}
+  const save = (match: string): string => {
+    const id = counter++
+    placeholders[id] = match
+    return `${PLACEHOLDER_PREFIX}${id}${PLACEHOLDER_SUFFIX}`
+  }
 
-export function formatWebCitations(
-  completionResponse: TextCompletionResponse,
-  limit = 3
-): string {
-  return (
-    '\n\n' +
-    completionResponse.venice_parameters.web_search_citations
-      .slice(0, limit)
-      .map((item) => {
-        return `- [${item.title}](${item.url})`
-      })
-      .join('\n')
+  const restore = (_match: string, id: string): string => {
+    return placeholders[parseInt(id, 10)] || ''
+  }
+
+  // Step 1: Protect intentional Telegram formatting patterns
+  let result = text
+    .replace(/`[^`]+`/g, save)
+    .replace(/\*[^*]+\*/g, save)
+    .replace(/_[^_]+_/g, save)
+
+  // Step 2: Escape remaining markdown characters
+  result = result
+    .replace(/\\/g, '\\\\')
+    .replace(/\*/g, '\\*')
+    .replace(/`/g, '\\`')
+    .replace(/_/g, '\\_')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+
+  // Step 3: Restore protected patterns
+  const restoreRegex = new RegExp(
+    `${PLACEHOLDER_PREFIX}([0-9]+)${PLACEHOLDER_SUFFIX}`,
+    'g'
   )
+  result = result.replace(restoreRegex, restore)
+
+  return result
 }
 
 export function fullMarkdown2TgMarkdown(input: string): string {
-  return input
-    .replaceAll(/^#+ *(.+)$/gm, '*$1*\n')
-    .replaceAll(/^--- *$/gm, '---------------')
+  if (!input) return ''
+
+  return (
+    input
+      // Convert standard markdown bold **text** to Telegram *text*
+      .replace(/\*\*([^*]+)\*\*/g, '*$1*')
+      // Convert headers (# text) to bold (*text*)
+      .replace(/^#+ *(.+)$/gm, '*$1*')
+      // Convert horizontal rules to visual separator
+      .replace(/^---+$/gm, '───────────────')
+      // Clean up excessive newlines
+      .replace(/\n{4,}/g, '\n\n\n')
+  )
 }
 
-export function getTextFromCommand(ctx: MessageContext): string {
-  const commandEntity = ctx.message.entities?.find(
-    (item) => item.type === 'bot_command' && item.offset === 0
-  )
-  return commandEntity
-    ? ctx.message.text.substring(commandEntity.length).trim()
-    : ctx.message.text.trim()
+export function formatTelegramMarkdownReply(input: string): string {
+  if (!input) return ''
+
+  // First convert standard markdown to Telegram format
+  const converted = fullMarkdown2TgMarkdown(input)
+
+  // Then escape any problematic characters while preserving intentional formatting
+  return escapeMarkdown(converted).trim()
+}
+
+export function createMarkdownLink(text: string, url: string): string {
+  if (!url) return escapeMarkdown(text)
+  const safeUrl = url.replace(/\)/g, '%29')
+  return `[${escapeMarkdown(text)}](${safeUrl})`
+}
+
+export interface NewsArticle {
+  title: string
+  url: string
+  source: string
+  publishedAt: Date
+  relevanceScore?: number
+  description?: string
+}
+
+export interface FormatNewsOptions {
+  mode: 'markdown' | 'plain'
+  includeDescription?: boolean
+  descriptionMaxLength?: number
+  includeRelevance?: boolean
+  includeDate?: boolean
+  addSpacing?: boolean
+}
+
+export function formatNewsArticle(
+  article: NewsArticle,
+  options: FormatNewsOptions
+): string {
+  const {
+    mode,
+    includeDescription = true,
+    descriptionMaxLength = 200,
+    includeRelevance = true,
+    includeDate = true,
+    addSpacing = false,
+  } = options
+
+  const isMarkdown = mode === 'markdown'
+  const lines: string[] = []
+
+  if (isMarkdown) {
+    lines.push(`*${escapeMarkdown(article.title)}*`)
+  } else {
+    lines.push(article.title)
+  }
+
+  const parts: string[] = []
+  if (isMarkdown) {
+    parts.push(`📰 Source: ${escapeMarkdown(article.source)}`)
+    if (includeDate) {
+      const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      parts.push(`📅 ${publishedStr}`)
+    }
+    lines.push(parts.join(' | '))
+  } else {
+    parts.push(`Source: ${article.source}`)
+    if (includeDate) {
+      const publishedStr = article.publishedAt.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      parts.push(publishedStr)
+    }
+    if (parts.length > 0) {
+      lines.push(parts.join(' | '))
+    }
+  }
+
+  if (includeDescription && article.description) {
+    let desc = article.description
+    if (descriptionMaxLength > 0 && desc.length > descriptionMaxLength) {
+      desc = desc.slice(0, descriptionMaxLength) + '...'
+    }
+    lines.push(isMarkdown ? escapeMarkdown(desc) : desc)
+  }
+
+  if (isMarkdown) {
+    lines.push(`🔗 ${createMarkdownLink('Read full article', article.url)}`)
+  } else {
+    lines.push(`URL: ${article.url}`)
+  }
+
+  if (includeRelevance && article.relevanceScore !== undefined) {
+    if (isMarkdown) {
+      lines.push(`⭐ Relevance: ${article.relevanceScore}/100`)
+    } else {
+      lines.push(`Relevance Score: ${article.relevanceScore}/100`)
+    }
+  }
+
+  if (addSpacing) {
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+export function formatNewsArticles(
+  articles: NewsArticle[],
+  options: FormatNewsOptions & { numbered?: boolean } = { mode: 'plain' }
+): string {
+  const { numbered = true, ...formatOptions } = options
+
+  return articles
+    .map((article, index) => {
+      const formatted = formatNewsArticle(article, formatOptions)
+      if (numbered) {
+        return `${index + 1}. ${formatted}`
+      }
+      return formatted
+    })
+    .join('\n\n')
 }
