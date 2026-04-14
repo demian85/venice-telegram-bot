@@ -39,6 +39,7 @@ export interface BotModels {
   summarizerModel: ChatOpenAI
   chatSystemPrompt: string
   supportsVision: boolean
+  supportsWebSearch?: boolean
 }
 
 export interface BotNewsArticle {
@@ -166,6 +167,7 @@ export class Bot {
         agentModel: models.agentModel,
         summarizerModel: models.summarizerModel,
         supportsVision: models.supportsVision,
+        supportsWebSearch: models.supportsWebSearch,
         tools: dependencies.tools ?? [],
         systemPrompt: models.chatSystemPrompt,
       })

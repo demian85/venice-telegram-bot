@@ -7,7 +7,11 @@ import type { AppConfig } from '@lib/config/types.js'
 import { getRedisClient, closeRedisClient } from '@lib/redis/index.js'
 import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news/index.js'
 import { createAgentTools } from '@lib/agent/tools.js'
-import { createLlmRoleModels, llmSupportsVision } from '@lib/llm/model.js'
+import {
+  createLlmRoleModels,
+  llmSupportsVision,
+  llmSupportsWebSearch,
+} from '@lib/llm/model.js'
 
 async function main() {
   const config: AppConfig = loadAppConfig()
@@ -22,7 +26,8 @@ async function main() {
     feeds: config.news.feeds,
   })
 
-  const tools = createAgentTools({ newsQueryService })
+  const supportsWebSearch = llmSupportsWebSearch('chat', config)
+  const tools = createAgentTools({ newsQueryService, supportsWebSearch })
 
   const bot = new Bot(
     { telegram: config.telegram, news: config.news },
@@ -31,6 +36,7 @@ async function main() {
       summarizerModel: models.summarizer,
       chatSystemPrompt: config.llm.roles.chat.systemPrompt,
       supportsVision: llmSupportsVision('chat', config),
+      supportsWebSearch,
     },
     {
       redis,

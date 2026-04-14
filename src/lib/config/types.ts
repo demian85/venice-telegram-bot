@@ -17,6 +17,7 @@ export interface NewsAppConfig {
 export interface LlmRoleConfig {
   model: string
   supportsVision: boolean
+  supportsWebSearch?: boolean
   systemPrompt: string
 }
 

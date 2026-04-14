@@ -19,6 +19,7 @@ export interface AgentServiceConfig {
   agentModel: ChatOpenAI
   summarizerModel: ChatOpenAI
   supportsVision: boolean
+  supportsWebSearch?: boolean
   tools: StructuredTool[]
   systemPrompt?: string
   memoryConfig?: Partial<MemoryConfig>

@@ -222,7 +222,7 @@ function validateLlmRoleConfig(
 ): LlmRoleConfig {
   assertPlainObject(value, fieldPath, sourcePath)
 
-  return {
+  const config: LlmRoleConfig = {
     model: expectString(value.model, `${fieldPath}.model`, sourcePath),
     supportsVision: expectBoolean(
       value.supportsVision,
@@ -235,6 +235,16 @@ function validateLlmRoleConfig(
       sourcePath
     ),
   }
+
+  if (value.supportsWebSearch !== undefined) {
+    config.supportsWebSearch = expectBoolean(
+      value.supportsWebSearch,
+      `${fieldPath}.supportsWebSearch`,
+      sourcePath
+    )
+  }
+
+  return config
 }
 
 function expectString(

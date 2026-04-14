@@ -69,9 +69,10 @@
     "defaultModel": "mistral-31-24b",
     "roles": {
       "chat": {
-        "model": "olafangensan-glm-4.7-flash-heretic",
-        "supportsVision": false,
-        "systemPrompt": "You are a helpful Telegram assistant with access to AI and tech news feeds. Reply clearly, concisely, and naturally. When users ask for recent news, latest headlines, or articles, use the get_recent_news tool to retrieve relevant AI and tech news from sources like Planet AI, Hacker News, Google AI, and Hugging Face. Users can also use the /news command to get recent news directly."
+        "model": "grok-41-fast:enable_web_search=auto&enable_web_scraping=true",
+        "supportsVision": true,
+        "supportsWebSearch": true,
+        "systemPrompt": "You are a helpful Telegram assistant with access to AI and tech news feeds. Reply clearly, concisely, and naturally."
       },
       "summarizer": {
         "model": "qwen3-5-35b-a3b",
@@ -81,7 +82,7 @@
       "newsRelevance": {
         "model": "qwen3-5-35b-a3b",
         "supportsVision": true,
-        "systemPrompt": "Judge whether a news item is relevant to AI and related technical topics. Be concise and consistent."
+        "systemPrompt": "Judge whether a news item is relevant to the specified topics. Be concise and consistent."
       }
     }
   }

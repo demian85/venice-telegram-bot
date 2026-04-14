@@ -225,6 +225,7 @@ export function createRecentNewsTool(
 
 export interface AgentToolDependencies {
   newsQueryService?: NewsQueryService
+  supportsWebSearch?: boolean
 }
 
 export function createAgentTools(
@@ -232,8 +233,10 @@ export function createAgentTools(
 ): StructuredTool[] {
   const tools: StructuredTool[] = [calculatorTool, helpTool, timeTool]
 
-  if (deps.newsQueryService) {
-    tools.push(createRecentNewsTool(deps.newsQueryService))
+  const newsQueryService = deps.newsQueryService
+  const shouldIncludeNewsTool = newsQueryService && !deps.supportsWebSearch
+  if (shouldIncludeNewsTool) {
+    tools.push(createRecentNewsTool(newsQueryService))
   }
 
   return tools
