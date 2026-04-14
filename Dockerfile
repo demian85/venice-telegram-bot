@@ -1,10 +1,15 @@
+FROM node:24-alpine
 
-FROM node:22
-RUN mkdir -p /opt/app
-WORKDIR /opt/app
-COPY package.json package-lock.json tsconfig.json ./
-RUN npm install
-COPY src/ ./src
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
 RUN npm run build
-# EXPOSE 3000
-CMD [ "npm", "start"]
+
+RUN mkdir -p logs
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

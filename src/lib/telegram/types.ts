@@ -1,50 +1,21 @@
-import { ModelData } from '@lib/types'
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { Context, NarrowedContext } from 'telegraf'
-import {
-  CallbackQuery,
-  Message,
-  Update,
-} from 'telegraf/typings/core/types/typegram'
+import type { Message, Update, MessageEntity } from 'telegraf/types'
 
 export type MessageContext = NarrowedContext<
-  ContextWithSession<Update>,
+  TelegramContext<Update>,
   Update.MessageUpdate<Record<'text', unknown> & Message.TextMessage>
 >
 
-export type CallbackQueryContext = NarrowedContext<
-  ContextWithSession,
-  Update.CallbackQueryUpdate<CallbackQuery>
+export type PhotoMessageContext = NarrowedContext<
+  TelegramContext<Update>,
+  Update.MessageUpdate<Record<'photo', unknown> & Message.PhotoMessage>
 >
 
-export interface CurrentCommand {
-  id: string
-  step: number
-  subcommand?: string
-  data?: string
-}
-
-export interface Session {
-  currentCommand: CurrentCommand | null
-  config: {
-    textModel: ModelData
-    imageModel: ModelData
-    codingModel: ModelData
-  }
-  textModelHistory: ChatCompletionMessageParam[]
-  codeModelHistory: ChatCompletionMessageParam[]
-  availableModels: ModelData[]
-}
-
-export interface ContextWithSession<U extends Update = Update>
-  extends Context<U> {
-  session: Session
+export interface TelegramContext<U extends Update = Update> extends Context<U> {
   chatType: 'private' | 'group'
+  chatScope: string
   isMention: boolean
-  parsedMessageText: string
+  parsedMessageText?: string
 }
 
-export interface Handler {
-  message: Array<(ctx: MessageContext) => Promise<void>>
-  callbackQuery: Array<(ctx: CallbackQueryContext) => Promise<void>>
-}
+export type { Message, Update, MessageEntity }

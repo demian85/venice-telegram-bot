@@ -1,24 +1,94 @@
 import 'dotenv/config'
 
-import { Bot } from '@lib/telegram'
-import logger from '@lib/logger'
-import { Config } from '@lib/types'
+import { Bot } from '@lib/telegram/index.js'
+import logger from '@lib/logger.js'
+import { loadAppConfig } from '@lib/config/load-config.js'
+import type { AppConfig } from '@lib/config/types.js'
+import { getRedisClient, closeRedisClient } from '@lib/redis/index.js'
+import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news/index.js'
+import { createAgentTools } from '@lib/agent/tools.js'
+import {
+  createLlmRoleModels,
+  llmSupportsVision,
+  llmSupportsWebSearch,
+} from '@lib/llm/model.js'
 
-async function loadConfig(): Promise<Config> {
-  const defaults = await import('./lib/telegram/defaults')
+async function main() {
+  const config: AppConfig = loadAppConfig()
+  const redis = getRedisClient()
+
+  const models = createLlmRoleModels(config)
+
+  const newsStore = new NewsStore(redis)
+  const newsQueryService = new NewsQueryService({
+    redis,
+    relevanceThreshold: config.news.relevanceThreshold,
+    feeds: config.news.feeds,
+  })
+
+  const supportsWebSearch = llmSupportsWebSearch('chat', config)
+  const tools = createAgentTools({ newsQueryService, supportsWebSearch })
+
+  const bot = new Bot(
+    { telegram: config.telegram, news: config.news },
+    {
+      agentModel: models.chat,
+      summarizerModel: models.summarizer,
+      chatSystemPrompt: config.llm.roles.chat.systemPrompt,
+      supportsVision: llmSupportsVision('chat', config),
+      supportsWebSearch,
+    },
+    {
+      redis,
+      newsQueryService,
+      tools,
+    }
+  )
+
+  await bot.init()
+
+  logger.info('Bot initialized')
+
+  const newsScheduler = new NewsScheduler(
+    {
+      redis,
+      model: models.newsRelevance,
+      newsConfig: config.news,
+      onDeliverArticle: async ({ chatId, article }) => {
+        await bot.sendNewsArticle(chatId, article)
+        logger.info({ chatId, article }, 'Relevant article delivered')
+      },
+    },
+    {
+      newsStore,
+    }
+  )
+
   try {
-    const userConfig = await import('./bot.config')
-    return { ...defaults.defaultConfig, ...userConfig.default }
+    logger.info('Starting news scheduler...')
+    await newsScheduler.start()
+    logger.info('News scheduler started successfully')
   } catch (err) {
-    return defaults.defaultConfig
+    logger.error({ err }, 'Failed to start news scheduler')
+    throw err
   }
+
+  process.once('SIGINT', async () => {
+    logger.info('Shutting down...')
+    await newsScheduler.stop()
+    closeRedisClient()
+    process.exit(0)
+  })
+
+  process.once('SIGTERM', async () => {
+    logger.info('Shutting down...')
+    await newsScheduler.stop()
+    closeRedisClient()
+    process.exit(0)
+  })
 }
 
-loadConfig()
-  .then((config) => {
-    const bot = new Bot(config)
-    return bot.init()
-  })
-  .catch((err) => {
-    logger.error(err)
-  })
+main().catch((err) => {
+  logger.error(err)
+  process.exit(1)
+})

@@ -1,0 +1,89 @@
+{
+  "telegram": {
+    "botUsername": "",
+    "whitelistedUsers": []
+  },
+  "news": {
+    "feeds": [
+      "https://planet-ai.net/rss.xml",
+      "https://news.ycombinator.com/rss",
+      "https://blog.google/technology/ai/rss/",
+      "https://huggingface.co/blog/feed.xml",
+      "https://www.infoq.com/feed/",
+      "https://thenewstack.io/feed/",
+      "https://github.blog/changelog/feed/",
+      "https://kubernetes.io/feed.xml",
+      "https://www.cncf.io/feed/"
+    ],
+    "pollIntervalMinutes": 5,
+    "deliveryCheckIntervalSeconds": 60,
+    "relevanceThreshold": 70,
+    "maxArticlesPerPoll": 10,
+    "topics": [
+      "AI",
+      "Artificial intelligence",
+      "Machine learning",
+      "LLM",
+      "Language model",
+      "Anthropic",
+      "Claude",
+      "Gemini",
+      "OpenAI",
+      "ChatGPT",
+      "DeepSeek",
+      "Mistral",
+      "xAI",
+      "Meta AI",
+      "RAG",
+      "Vector database",
+      "AI agent",
+      "Autonomous agent",
+      "AI safety",
+      "Prompt engineering",
+      "AI research",
+      "Open source AI",
+      "AI chips",
+      "GPU",
+      "TPU",
+      "NVIDIA",
+      "AMD",
+      "AI startup",
+      "Google DeepMind",
+      "Perplexity",
+      "Text-to-speech",
+      "TTS",
+      "Speech recognition",
+      "STT",
+      "Computer vision",
+      "Image generation",
+      "Stable Diffusion",
+      "AI coding",
+      "Code generation",
+      "Copilot",
+      "Cursor"
+    ]
+  },
+  "llm": {
+    "apiKeyEnvVar": "LLM_API_KEY",
+    "baseUrl": "https://api.venice.ai/api/v1",
+    "defaultModel": "mistral-31-24b",
+    "roles": {
+      "chat": {
+        "model": "grok-41-fast:enable_web_search=auto&enable_web_scraping=true",
+        "supportsVision": true,
+        "supportsWebSearch": true,
+        "systemPrompt": "You are a helpful Telegram assistant with access to AI and tech news feeds. Reply clearly, concisely, and naturally."
+      },
+      "summarizer": {
+        "model": "qwen3-5-35b-a3b",
+        "supportsVision": true,
+        "systemPrompt": "Summarize conversations accurately and briefly. Keep key facts, decisions, and action items."
+      },
+      "newsRelevance": {
+        "model": "qwen3-5-35b-a3b",
+        "supportsVision": true,
+        "systemPrompt": "Judge whether a news item is relevant to the specified topics. Be concise and consistent."
+      }
+    }
+  }
+}
