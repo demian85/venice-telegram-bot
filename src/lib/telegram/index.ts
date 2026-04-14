@@ -272,7 +272,7 @@ export class Bot {
             'Another bot instance is already running (409 Conflict). Kill all node processes and try again.'
           )
           throw new Error(
-            'Telegram bot 409 Conflict: Another instance is already running. Run: pkill -f "venice-telegram-bot.*tsx" && sleep 2'
+            'Telegram bot 409 Conflict: Another instance is already running. Run: pkill -f "ai-telegram-assistant-bot.*tsx" && sleep 2'
           )
         }
         throw error
