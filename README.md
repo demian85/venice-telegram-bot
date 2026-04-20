@@ -106,13 +106,13 @@ cp config.sample.json config.json
 
 Important config areas:
 
-- `telegram.botUsername` - used for mention handling in groups
+- `telegram.botUsername` - used for mention handling in groups (do not include the `@` prefix)
 - `telegram.whitelistedUsers` - optional allowlist for private chats
 - `news.feeds` - RSS feeds to monitor
 - `news.pollIntervalMinutes` - how often feeds are polled
 - `news.deliveryCheckIntervalSeconds` - how often subscriptions are checked for delivery
-- `news.relevanceThreshold` - minimum score to keep or deliver an article
-- `news.topics` - default topics used for relevance scoring
+- `news.relevanceThreshold` - minimum score to deliver an article to a chat (scored per-chat)
+- `news.topics` - default topics used when a chat has not set custom topics
 - `llm.apiKeyEnvVar` - env var holding the provider API key
 - `llm.baseUrl` - OpenAI-compatible base URL
 - `llm.roles.*` - separate model/system-prompt settings for chat, summarizer, and news relevance
@@ -201,12 +201,13 @@ This keeps the bot context-aware without letting conversation history grow unbou
 The bot continuously monitors configured RSS feeds and stores recent articles in Redis.
 
 1. Feeds are polled on a schedule
-2. Each article is scored for relevance with the dedicated news relevance model
-3. Relevant articles are stored and indexed in Redis
-4. Subscribed chats receive articles according to their own delivery interval
-5. Users can also request recent articles manually with `/news` or ask for a digest with `/summary`
+2. New articles are stored and indexed in Redis (duplicates are skipped, and items expire after 7 days)
+3. Subscribed chats receive articles according to their own delivery interval
+4. At delivery time, each candidate article is scored against **that chat's own topics** using the dedicated news relevance model
+5. The first article that meets the relevance threshold and has not been delivered to that chat before is sent
+6. Users can also request recent articles manually with `/news` or ask for a digest with `/summary`
 
-Per-chat topic customization is supported through `/topics`, so different chats can receive different filters even when they share the same global feed list.
+Per-chat topic customization is supported through `/topics`. When a chat sets custom topics, those topics are used for relevance scoring at delivery time and for on-demand `/news` and `/summary` requests. Chats that have not customized topics fall back to the global default.
 
 ## Project structure
 

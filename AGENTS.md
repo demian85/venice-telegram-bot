@@ -82,7 +82,7 @@ The app uses three independently configurable model roles under `config.llm.role
 
 1. **Chat Role** — primary conversational model used by the Telegram bot
 2. **Summarizer Role** — compresses memory into daily, weekly, and monthly summaries
-3. **News Relevance Role** — scores RSS items against configured topics
+3. **News Relevance Role** — scores RSS items against a chat's configured topics at delivery time
 
 Each role exposes:
 
@@ -136,19 +136,19 @@ Tool wiring happens in `src/lib/agent/tools.ts`.
 
 The news pipeline is split into scheduled polling and scheduled delivery:
 
-- `poll-news` — fetch RSS feeds and score new items for relevance
-- `deliver-news` — check subscribed chats and deliver the next eligible relevant article
+- `poll-news` — fetch RSS feeds and store new articles in Redis (duplicates are skipped; items have a 7-day TTL)
+- `deliver-news` — check subscribed chats and score candidate articles against each chat's own topics before delivering
 
 Key config fields live under `news`:
 
 - `feeds`
 - `pollIntervalMinutes`
 - `deliveryCheckIntervalSeconds`
-- `relevanceThreshold`
+- `relevanceThreshold` — per-chat delivery threshold
 - `maxArticlesPerPoll`
-- `topics`
+- `topics` — default fallback when a chat has not set custom topics
 
-Per-chat subscriptions can override topics and cadence.
+Per-chat subscriptions can override topics and cadence. Unsubscribed chats do not receive any deliveries regardless of topic settings. `/news` and `/summary` also respect per-chat topics.
 
 ### Telegram commands
 
