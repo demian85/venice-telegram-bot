@@ -58,7 +58,7 @@ function createBotHarness(options: { imageSupport?: boolean } = {}) {
   const agentService = new StubAgentService(options.imageSupport ?? true)
   const config: Config = {
     telegram: {
-      botUsername: '@bot',
+      botUsername: 'bot',
       whitelistedUsers: [],
     },
     news: {

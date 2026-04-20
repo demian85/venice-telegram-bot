@@ -22,24 +22,6 @@ interface RelevantArticle {
   relevanceScore: number
 }
 
-interface DeliverableItemDecision {
-  nextItem: {
-    id: string
-    title: string
-    url: string
-    description?: string
-    relevanceScore?: number
-    fetchedAt: Date
-  } | null
-  skipReason?:
-    | 'no_relevant_items'
-    | 'already_delivered'
-    | 'pre_deliver_after_gate'
-  deliverAfterFilteredCount: number
-  alreadyDeliveredCount: number
-  candidateCount: number
-}
-
 type DeliveryCallback = (delivery: {
   chatId: string
   article: RelevantArticle
@@ -82,6 +64,7 @@ export class NewsScheduler {
   private readonly chatSubscriptionStore: ChatSubscriptionStore
   private readonly newsDeliveryStore: NewsDeliveryStore
   private readonly config: NewsConfig
+  private readonly redis: Redis
   private readonly queue: QueueLike
   private readonly worker: WorkerLike
 
@@ -103,6 +86,7 @@ export class NewsScheduler {
     this.newsDeliveryStore =
       dependencies.newsDeliveryStore ?? new NewsDeliveryStore(config.redis)
     this.config = config.newsConfig
+    this.redis = config.redis
 
     this.queue =
       dependencies.queue ??
@@ -129,7 +113,6 @@ export class NewsScheduler {
             switch (job.name) {
               case 'poll-news':
                 await this.pollFeeds()
-                await this.scoreArticles()
                 break
               case 'deliver-news':
                 if (config.onDeliverArticle) {
@@ -308,44 +291,13 @@ export class NewsScheduler {
     const limited = items.slice(0, this.config.maxArticlesPerPoll)
     let storedCount = 0
     let skippedCount = 0
-    let irrelevantCount = 0
 
     for (const item of limited) {
-      const exists = await this.newsStore.checkItemExists(item.id)
-      if (exists) {
-        logger.debug(
-          {
-            event: 'news.item.duplicate_skip',
-            itemId: item.id,
-            itemUrl: item.url,
-          },
-          'Skipped duplicate news item before store write'
-        )
+      const wasStored = await this.newsStore.storeItem(item)
+      if (!wasStored) {
         skippedCount++
         continue
       }
-
-      const { score, isRelevant } =
-        await this.relevanceDetector.detectRelevance(item)
-
-      if (!isRelevant) {
-        logger.debug(
-          {
-            event: 'news.item.irrelevant_skip',
-            itemId: item.id,
-            itemTitle: item.title.slice(0, 50),
-            score,
-            threshold: this.config.relevanceThreshold,
-          },
-          `Skipped irrelevant article (score ${score} < ${this.config.relevanceThreshold}): ${item.title.slice(0, 50)}...`
-        )
-        irrelevantCount++
-        continue
-      }
-
-      item.relevanceScore = score
-      item.isRelevant = isRelevant
-      await this.newsStore.storeItem(item)
       storedCount++
 
       logger.info(
@@ -354,9 +306,8 @@ export class NewsScheduler {
           itemId: item.id,
           itemTitle: item.title,
           itemSource: item.source,
-          relevanceScore: score,
         },
-        `Stored relevant article (score ${score}): ${item.title.slice(0, 50)}...`
+        `Stored article: ${item.title.slice(0, 50)}...`
       )
     }
 
@@ -368,10 +319,9 @@ export class NewsScheduler {
         itemsPolled: items.length,
         itemsStored: storedCount,
         itemsSkipped: skippedCount,
-        itemsIrrelevant: irrelevantCount,
         durationMs: pollDuration,
       },
-      `Poll complete: ${storedCount} stored, ${skippedCount} duplicates, ${irrelevantCount} irrelevant (${items.length} total fetched)`
+      `Poll complete: ${storedCount} stored, ${skippedCount} duplicates (${items.length} total fetched)`
     )
     logger.trace(
       {
@@ -380,41 +330,6 @@ export class NewsScheduler {
         itemsStored: storedCount,
       },
       'Poll cycle ended'
-    )
-  }
-
-  private async scoreArticles(): Promise<void> {
-    const unscored = await this.newsStore.getUnscoredItems(20)
-
-    if (unscored.length === 0) {
-      return
-    }
-
-    logger.info(
-      {
-        event: 'news.score.start',
-        articleCount: unscored.length,
-      },
-      `Scoring ${unscored.length} articles for relevance`
-    )
-
-    const scores = await this.relevanceDetector.batchDetectRelevance(unscored)
-    let relevantCount = 0
-
-    for (const [id, { score, isRelevant }] of scores) {
-      await this.newsStore.updateRelevance(id, score, isRelevant)
-      if (isRelevant) {
-        relevantCount++
-      }
-    }
-
-    logger.info(
-      {
-        event: 'news.score.complete',
-        articleCount: unscored.length,
-        relevantCount,
-      },
-      `Scored ${unscored.length} articles, ${relevantCount} are relevant`
     )
   }
 
@@ -428,17 +343,21 @@ export class NewsScheduler {
     )
     const startTime = Date.now()
 
-    const [subscriptions, relevantItems] = await Promise.all([
-      this.chatSubscriptionStore.listEnabledSubscriptions(),
-      this.newsStore.getRelevantItems(this.config.relevanceThreshold),
-    ])
+    const subscriptions =
+      await this.chatSubscriptionStore.listEnabledSubscriptions()
+
+    if (subscriptions.length === 0) {
+      logger.debug(
+        { event: 'news.delivery.no_subscriptions' },
+        'No enabled subscriptions, skipping delivery'
+      )
+      return
+    }
 
     logger.debug(
       {
         event: 'news.delivery.tick',
         subscribedChatCount: subscriptions.length,
-        relevantItemCount: relevantItems.length,
-        deliveryThreshold: this.config.relevanceThreshold,
       },
       'Evaluating subscribed chats for news delivery'
     )
@@ -457,152 +376,204 @@ export class NewsScheduler {
             intervalSeconds: subscription.intervalSeconds,
             deliverAfter: subscription.deliverAfter,
             lastSentAt: subscription.lastSentAt,
-            relevantItemCount: relevantItems.length,
           },
           'Subscribed chat is not yet eligible for delivery'
         )
         continue
       }
 
-      const decision = await this.findNextDeliverableItem(
+      const chatTopics = await this.chatSubscriptionStore.getTopics(
         subscription.chatId,
-        subscription.deliverAfter,
-        relevantItems
+        this.config.topics
       )
 
-      if (!decision.nextItem) {
+      const candidateItems = await this.newsStore.getItemsSince(
+        subscription.deliverAfter
+      )
+
+      logger.debug(
+        {
+          event: 'news.delivery.chat.candidates',
+          chatId: subscription.chatId,
+          candidateCount: candidateItems.length,
+          deliverAfter: subscription.deliverAfter,
+        },
+        `Found ${candidateItems.length} candidate items for chat ${subscription.chatId}`
+      )
+
+      let delivered = false
+
+      for (const item of candidateItems) {
+        const alreadyDelivered = await this.newsDeliveryStore.hasDelivered(
+          subscription.chatId,
+          item.id
+        )
+        if (alreadyDelivered) {
+          continue
+        }
+
+        const cachedScore = await this.getCachedRelevanceScore(
+          subscription.chatId,
+          item.id
+        )
+
+        let score: number
+        let isRelevant: boolean
+
+        if (cachedScore !== null) {
+          score = cachedScore
+          isRelevant = score >= this.config.relevanceThreshold
+          logger.debug(
+            {
+              event: 'news.delivery.chat.cached_score',
+              chatId: subscription.chatId,
+              itemId: item.id,
+              score,
+              isRelevant,
+            },
+            'Using cached relevance score'
+          )
+        } else {
+          const result = await this.relevanceDetector.detectRelevance(
+            item,
+            chatTopics
+          )
+          score = result.score
+          isRelevant = result.isRelevant
+
+          await this.cacheRelevanceScore(
+            subscription.chatId,
+            item.id,
+            score
+          )
+
+          logger.info(
+            {
+              event: 'news.delivery.chat.score',
+              chatId: subscription.chatId,
+              itemId: item.id,
+              itemTitle: item.title.slice(0, 50),
+              score,
+              isRelevant,
+              threshold: this.config.relevanceThreshold,
+            },
+            `Scored article for chat ${subscription.chatId}: ${score}`
+          )
+        }
+
+        if (!isRelevant) {
+          continue
+        }
+
+        await this.newsDeliveryStore.markDelivered(
+          subscription.chatId,
+          item.id,
+          now
+        )
+
+        logger.debug(
+          {
+            event: 'news.telegram.send.start',
+            chatId: subscription.chatId,
+            articleId: item.id,
+            articleTitle: item.title,
+            articleUrl: item.url,
+            score,
+            deliveryState: 'marked_delivered',
+            markedDeliveredAt: now,
+          },
+          'Marked relevant article delivered before Telegram callback'
+        )
+
+        try {
+          await callback({
+            chatId: subscription.chatId,
+            article: {
+              articleId: item.id,
+              title: item.title,
+              url: item.url,
+              description: item.description,
+              relevanceScore: score,
+            },
+          })
+        } catch (error) {
+          logger.error(
+            {
+              event: 'news.telegram.send.error',
+              chatId: subscription.chatId,
+              articleId: item.id,
+              articleTitle: item.title,
+              articleUrl: item.url,
+              score,
+              rollbackAction: 'unmarkDelivered',
+              err: error,
+            },
+            'Telegram delivery callback failed'
+          )
+
+          await this.newsDeliveryStore.unmarkDelivered(
+            subscription.chatId,
+            item.id
+          )
+
+          logger.error(
+            {
+              event: 'news.delivery.rollback',
+              chatId: subscription.chatId,
+              articleId: item.id,
+              articleTitle: item.title,
+              articleUrl: item.url,
+              score,
+              rollbackAction: 'unmarkDelivered',
+            },
+            'Rolled back delivered article after Telegram failure'
+          )
+
+          throw error
+        }
+
+        await this.chatSubscriptionStore.markSent(subscription.chatId, now)
+
+        logger.info(
+          {
+            event: 'news.delivery.success',
+            chatId: subscription.chatId,
+            articleId: item.id,
+            articleTitle: item.title,
+            relevanceScore: score,
+          },
+          `Delivered article "${item.title.slice(0, 50)}..." to chat ${subscription.chatId}`
+        )
+
+        logger.debug(
+          {
+            event: 'news.telegram.send.success',
+            chatId: subscription.chatId,
+            articleId: item.id,
+            articleTitle: item.title,
+            articleUrl: item.url,
+            score,
+            deliveryState: 'marked_sent',
+            sentAt: now,
+          },
+          'Recorded successful relevant article delivery'
+        )
+
+        delivered = true
+        break
+      }
+
+      if (!delivered) {
         logger.debug(
           {
             event: 'news.delivery.chat.skip',
             chatId: subscription.chatId,
-            skipReason: decision.skipReason,
-            eligibleAt,
-            intervalSeconds: subscription.intervalSeconds,
-            deliverAfter: subscription.deliverAfter,
-            lastSentAt: subscription.lastSentAt,
-            relevantItemCount: relevantItems.length,
-            candidateCount: decision.candidateCount,
-            deliverAfterFilteredCount: decision.deliverAfterFilteredCount,
-            alreadyDeliveredCount: decision.alreadyDeliveredCount,
+            skipReason: 'no_relevant_items',
+            candidateCount: candidateItems.length,
           },
-          'Subscribed chat has no pending relevant article to deliver'
+          'No relevant article found for chat'
         )
-        continue
       }
-
-      const nextItem = decision.nextItem
-
-      logger.debug(
-        {
-          event: 'news.delivery.chat.eligible',
-          chatId: subscription.chatId,
-          eligibleAt,
-          intervalSeconds: subscription.intervalSeconds,
-          deliverAfter: subscription.deliverAfter,
-          lastSentAt: subscription.lastSentAt,
-          pendingArticleId: nextItem.id,
-          pendingArticleTitle: nextItem.title,
-          pendingArticleFetchedAt: nextItem.fetchedAt,
-          candidateCount: decision.candidateCount,
-          deliverAfterFilteredCount: decision.deliverAfterFilteredCount,
-          alreadyDeliveredCount: decision.alreadyDeliveredCount,
-        },
-        'Subscribed chat is eligible and has a pending relevant article'
-      )
-
-      await this.newsDeliveryStore.markDelivered(
-        subscription.chatId,
-        nextItem.id,
-        now
-      )
-
-      logger.debug(
-        {
-          event: 'news.telegram.send.start',
-          chatId: subscription.chatId,
-          articleId: nextItem.id,
-          articleTitle: nextItem.title,
-          articleUrl: nextItem.url,
-          score: nextItem.relevanceScore || 0,
-          deliveryState: 'marked_delivered',
-          markedDeliveredAt: now,
-        },
-        'Marked relevant article delivered before Telegram callback'
-      )
-
-      try {
-        await callback({
-          chatId: subscription.chatId,
-          article: {
-            articleId: nextItem.id,
-            title: nextItem.title,
-            url: nextItem.url,
-            description: nextItem.description,
-            relevanceScore: nextItem.relevanceScore || 0,
-          },
-        })
-      } catch (error) {
-        logger.error(
-          {
-            event: 'news.telegram.send.error',
-            chatId: subscription.chatId,
-            articleId: nextItem.id,
-            articleTitle: nextItem.title,
-            articleUrl: nextItem.url,
-            score: nextItem.relevanceScore || 0,
-            rollbackAction: 'unmarkDelivered',
-            err: error,
-          },
-          'Telegram delivery callback failed'
-        )
-
-        await this.newsDeliveryStore.unmarkDelivered(
-          subscription.chatId,
-          nextItem.id
-        )
-
-        logger.error(
-          {
-            event: 'news.delivery.rollback',
-            chatId: subscription.chatId,
-            articleId: nextItem.id,
-            articleTitle: nextItem.title,
-            articleUrl: nextItem.url,
-            score: nextItem.relevanceScore || 0,
-            rollbackAction: 'unmarkDelivered',
-          },
-          'Rolled back delivered article after Telegram failure'
-        )
-
-        throw error
-      }
-
-      await this.chatSubscriptionStore.markSent(subscription.chatId, now)
-
-      logger.info(
-        {
-          event: 'news.delivery.success',
-          chatId: subscription.chatId,
-          articleId: nextItem.id,
-          articleTitle: nextItem.title,
-          relevanceScore: nextItem.relevanceScore || 0,
-        },
-        `Delivered article "${nextItem.title.slice(0, 50)}..." to chat ${subscription.chatId}`
-      )
-
-      logger.debug(
-        {
-          event: 'news.telegram.send.success',
-          chatId: subscription.chatId,
-          articleId: nextItem.id,
-          articleTitle: nextItem.title,
-          articleUrl: nextItem.url,
-          score: nextItem.relevanceScore || 0,
-          deliveryState: 'marked_sent',
-          sentAt: now,
-        },
-        'Recorded successful relevant article delivery'
-      )
     }
 
     const deliveryDuration = Date.now() - startTime
@@ -634,62 +605,26 @@ export class NewsScheduler {
       : subscription.deliverAfter
   }
 
-  private async findNextDeliverableItem(
+  private getRelevanceCacheKey(chatId: string, itemId: string): string {
+    return `news:chat-relevance:${chatId}:${itemId}`
+  }
+
+  private async getCachedRelevanceScore(
     chatId: string,
-    deliverAfter: Date,
-    relevantItems: Array<{
-      id: string
-      title: string
-      url: string
-      description?: string
-      relevanceScore?: number
-      fetchedAt: Date
-    }>
-  ): Promise<DeliverableItemDecision> {
-    let candidateCount = 0
-    let deliverAfterFilteredCount = 0
-    let alreadyDeliveredCount = 0
+    itemId: string
+  ): Promise<number | null> {
+    const key = this.getRelevanceCacheKey(chatId, itemId)
+    const data = await this.redis.get(key)
+    if (!data) return null
+    return Number(data)
+  }
 
-    for (const item of relevantItems) {
-      if (item.fetchedAt.getTime() < deliverAfter.getTime()) {
-        deliverAfterFilteredCount += 1
-        continue
-      }
-
-      candidateCount += 1
-
-      const alreadyDelivered = await this.newsDeliveryStore.hasDelivered(
-        chatId,
-        item.id
-      )
-
-      if (!alreadyDelivered) {
-        return {
-          nextItem: item,
-          candidateCount,
-          deliverAfterFilteredCount,
-          alreadyDeliveredCount,
-        }
-      }
-
-      alreadyDeliveredCount += 1
-    }
-
-    const skipReason =
-      relevantItems.length === 0
-        ? 'no_relevant_items'
-        : candidateCount === 0
-          ? 'pre_deliver_after_gate'
-          : alreadyDeliveredCount > 0
-            ? 'already_delivered'
-            : 'no_relevant_items'
-
-    return {
-      nextItem: null,
-      skipReason,
-      candidateCount,
-      deliverAfterFilteredCount,
-      alreadyDeliveredCount,
-    }
+  private async cacheRelevanceScore(
+    chatId: string,
+    itemId: string,
+    score: number
+  ): Promise<void> {
+    const key = this.getRelevanceCacheKey(chatId, itemId)
+    await this.redis.setex(key, 14 * 24 * 60 * 60, String(score))
   }
 }

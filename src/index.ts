@@ -5,7 +5,7 @@ import logger from '@lib/logger.js'
 import { loadAppConfig } from '@lib/config/load-config.js'
 import type { AppConfig } from '@lib/config/types.js'
 import { getRedisClient, closeRedisClient } from '@lib/redis/index.js'
-import { NewsScheduler, NewsStore, NewsQueryService } from '@lib/news/index.js'
+import { NewsScheduler, NewsStore, NewsQueryService, RelevanceDetector } from '@lib/news/index.js'
 import { createAgentTools } from '@lib/agent/tools.js'
 import {
   createLlmRoleModels,
@@ -20,10 +20,15 @@ async function main() {
   const models = createLlmRoleModels(config)
 
   const newsStore = new NewsStore(redis)
+  const relevanceDetector = new RelevanceDetector(models.newsRelevance, {
+    topics: config.news.topics,
+    relevanceThreshold: config.news.relevanceThreshold,
+  })
   const newsQueryService = new NewsQueryService({
     redis,
     relevanceThreshold: config.news.relevanceThreshold,
     feeds: config.news.feeds,
+    relevanceDetector,
   })
 
   const supportsWebSearch = llmSupportsWebSearch('chat', config)

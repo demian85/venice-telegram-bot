@@ -181,6 +181,24 @@ export class NewsStore {
     return items
   }
 
+  async getItemsSince(since: Date): Promise<NewsItem[]> {
+    const ids = await this.redis.zrangebyscore(
+      `${this.keyPrefix}items`,
+      since.getTime(),
+      '+inf'
+    )
+
+    const items: NewsItem[] = []
+    for (const id of ids) {
+      const item = await this.getItem(id)
+      if (item) {
+        items.push(item)
+      }
+    }
+
+    return items
+  }
+
   private passesThreshold(item: NewsItem, threshold: number): boolean {
     return item.relevanceScore !== undefined && item.relevanceScore >= threshold
   }

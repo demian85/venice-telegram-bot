@@ -222,6 +222,14 @@ export class ChatSubscriptionStore {
     }
   }
 
+  async getTopics(
+    chatId: string,
+    globalTopics: string[]
+  ): Promise<string[]> {
+    const subscription = await this.getSubscription(chatId)
+    return subscription?.topics ?? globalTopics
+  }
+
   async deleteSubscription(chatId: string): Promise<void> {
     await this.redis.del(this.getKey(chatId))
     await this.redis.srem(this.indexKey, chatId)

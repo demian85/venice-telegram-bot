@@ -4,6 +4,7 @@ import {
   NewsDeliveryStore,
   NewsScheduler,
   NewsStore,
+  RelevanceDetector,
   defaultNewsIntervalSeconds,
   minNewsIntervalSeconds,
   type NewsItem,
@@ -14,6 +15,19 @@ import {
   createNoopQueue,
   createNoopWorker,
 } from './test-helpers.js'
+
+function createMockRelevanceDetector() {
+  return {
+    detectRelevance: async () => ({ score: 90, isRelevant: true }),
+    batchDetectRelevance: async (items: NewsItem[]) => {
+      const results = new Map<string, { score: number; isRelevant: boolean }>()
+      for (const item of items) {
+        results.set(item.id, { score: 90, isRelevant: true })
+      }
+      return results
+    },
+  } as unknown as RelevanceDetector
+}
 
 function createNewsItem(input: {
   id: string
@@ -150,6 +164,7 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
       chatSubscriptionStore: subscriptionStore,
       newsDeliveryStore: deliveryStore,
       newsStore,
+      relevanceDetector: createMockRelevanceDetector(),
       queue: createNoopQueue(),
       worker: createNoopWorker(),
     }
@@ -178,18 +193,19 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
 
   expect(getEventRecords(firstPassRecords, 'news.delivery.tick').length).toBe(1)
 
-  const eligibleRecords = getEventRecords(
+  const scoreRecords = getEventRecords(
     firstPassRecords,
-    'news.delivery.chat.eligible'
+    'news.delivery.chat.score'
   )
-  expect(eligibleRecords.length).toBe(2)
-  expect(eligibleRecords.map((record) => record.context.chatId)).toEqual([
+  expect(scoreRecords.length).toBe(2)
+  expect(scoreRecords.map((record) => record.context.chatId)).toEqual([
     'chat-a',
     'chat-b',
   ])
-  expect(
-    eligibleRecords.map((record) => record.context.pendingArticleId)
-  ).toEqual(['item-1', 'item-1'])
+  expect(scoreRecords.map((record) => record.context.itemId)).toEqual([
+    'item-1',
+    'item-1',
+  ])
 
   const sendStartRecords = getEventRecords(
     firstPassRecords,
@@ -212,10 +228,10 @@ test('delivery stays isolated per chat and chooses the oldest eligible undeliver
     JSON.stringify({
       scenario: 'happy_delivery',
       events: [
-        ...eligibleRecords.map((record) => ({
+        ...scoreRecords.map((record) => ({
           event: record.context.event,
           chatId: record.context.chatId,
-          pendingArticleId: record.context.pendingArticleId,
+          itemId: record.context.itemId,
         })),
         ...sendStartRecords.map((record) => ({
           event: record.context.event,
@@ -302,6 +318,7 @@ test('delivery respects cooldowns and skips items fetched before a resubscribe g
       chatSubscriptionStore: subscriptionStore,
       newsDeliveryStore: deliveryStore,
       newsStore,
+      relevanceDetector: createMockRelevanceDetector(),
       queue: createNoopQueue(),
       worker: createNoopWorker(),
     }
@@ -402,6 +419,7 @@ test('delivery rollback unmarks an article when the send callback fails', async 
       chatSubscriptionStore: subscriptionStore,
       newsDeliveryStore: deliveryStore,
       newsStore,
+      relevanceDetector: createMockRelevanceDetector(),
       queue: createNoopQueue(),
       worker: createNoopWorker(),
     }
@@ -426,14 +444,14 @@ test('delivery rollback unmarks an article when the send callback fails', async 
     ).rejects.toThrow(/Simulated Telegram send failure/)
   })
 
-  const eligibleRollbackRecord = rollbackRecords.find(
+  const scoreRollbackRecord = rollbackRecords.find(
     (record: any) =>
-      record.context.event === 'news.delivery.chat.eligible' &&
+      record.context.event === 'news.delivery.chat.score' &&
       record.context.chatId === 'chat-rollback'
   )
-  expect(eligibleRollbackRecord).toBeTruthy()
-  if (!eligibleRollbackRecord) throw new Error('Missing eligibleRollbackRecord')
-  expect(eligibleRollbackRecord.context.pendingArticleId).toBe('rollback-item')
+  expect(scoreRollbackRecord).toBeTruthy()
+  if (!scoreRollbackRecord) throw new Error('Missing scoreRollbackRecord')
+  expect(scoreRollbackRecord.context.itemId).toBe('rollback-item')
 
   const sendStartRecord = rollbackRecords.find(
     (record: any) =>
@@ -469,9 +487,9 @@ test('delivery rollback unmarks an article when the send callback fails', async 
       scenario: 'send_failure_rollback',
       events: [
         {
-          event: eligibleRollbackRecord.context.event,
-          chatId: eligibleRollbackRecord.context.chatId,
-          pendingArticleId: eligibleRollbackRecord.context.pendingArticleId,
+          event: scoreRollbackRecord.context.event,
+          chatId: scoreRollbackRecord.context.chatId,
+          itemId: scoreRollbackRecord.context.itemId,
         },
         {
           event: sendStartRecord.context.event,

@@ -2,6 +2,7 @@ import type { Redis } from 'ioredis'
 import type { NewsItem } from './types.js'
 import { FeedReader } from './feed-reader.js'
 import { NewsStore } from './news-store.js'
+import { RelevanceDetector } from './relevance-detector.js'
 import logger from '@lib/logger.js'
 
 export interface RecentNewsItem {
@@ -19,6 +20,7 @@ export interface NewsQueryServiceConfig {
   redis: Redis
   relevanceThreshold: number
   feeds?: string[]
+  relevanceDetector?: RelevanceDetector
 }
 
 export class NewsQueryService {
@@ -28,6 +30,7 @@ export class NewsQueryService {
   private readonly feedReader: FeedReader
   private readonly newsStore: NewsStore
   private readonly feeds: string[]
+  private readonly relevanceDetector?: RelevanceDetector
 
   constructor(config: NewsQueryServiceConfig) {
     this.redis = config.redis
@@ -35,6 +38,7 @@ export class NewsQueryService {
     this.feeds = config.feeds || []
     this.feedReader = new FeedReader()
     this.newsStore = new NewsStore(config.redis)
+    this.relevanceDetector = config.relevanceDetector
   }
 
   async getRecentNews(limit: number): Promise<RecentNewsItem[]> {
@@ -150,6 +154,171 @@ export class NewsQueryService {
     }
 
     return items
+  }
+
+  async getRecentNewsForChat(
+    limit: number,
+    topics: string[]
+  ): Promise<RecentNewsItem[]> {
+    const raw = await this.getRecentNewsRaw(50)
+
+    if (!this.relevanceDetector) {
+      logger.warn(
+        { event: 'news.query.no_detector' },
+        'No relevance detector configured, returning unfiltered news'
+      )
+      return raw.slice(0, limit)
+    }
+
+    const itemsToScore = raw.map((item) => ({
+      id: item.id,
+      source: item.source,
+      feedUrl: '',
+      title: item.title,
+      description: item.description,
+      url: item.url,
+      publishedAt: item.publishedAt,
+      fetchedAt: item.fetchedAt,
+    }))
+
+    const scores = await this.relevanceDetector.batchDetectRelevance(
+      itemsToScore,
+      topics
+    )
+
+    const relevant: RecentNewsItem[] = []
+    for (const item of raw) {
+      const score = scores.get(item.id)
+      if (score && score.isRelevant) {
+        relevant.push({ ...item, relevanceScore: score.score })
+        if (relevant.length >= limit) break
+      }
+    }
+
+    return relevant
+  }
+
+  async getRecentNewsLast24HoursForChat(
+    maxCount: number,
+    topics: string[]
+  ): Promise<RecentNewsItem[]> {
+    const now = Date.now()
+    const oneDayAgo = now - 24 * 60 * 60 * 1000
+
+    const ids = await this.redis.zrevrangebyscore(
+      `${this.keyPrefix}items`,
+      '+inf',
+      oneDayAgo
+    )
+
+    const items: RecentNewsItem[] = []
+    for (const id of ids.slice(0, maxCount * 3)) {
+      const data = await this.redis.get(`${this.keyPrefix}item:${id}`)
+      if (!data) continue
+
+      const item = JSON.parse(data) as Omit<
+        NewsItem,
+        'publishedAt' | 'fetchedAt' | 'legacyBroadcastedAt'
+      > & {
+        publishedAt: string
+        fetchedAt: string
+        legacyBroadcastedAt?: string
+      }
+
+      items.push({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        source: item.source,
+        publishedAt: new Date(item.publishedAt),
+        fetchedAt: new Date(item.fetchedAt),
+        relevanceScore: item.relevanceScore,
+        description: item.description,
+      })
+    }
+
+    if (!this.relevanceDetector) {
+      return items.slice(0, maxCount)
+    }
+
+    const itemsToScore = items.map((item) => ({
+      id: item.id,
+      source: item.source,
+      feedUrl: '',
+      title: item.title,
+      description: item.description,
+      url: item.url,
+      publishedAt: item.publishedAt,
+      fetchedAt: item.fetchedAt,
+    }))
+
+    const scores = await this.relevanceDetector.batchDetectRelevance(
+      itemsToScore,
+      topics
+    )
+
+    const relevant: RecentNewsItem[] = []
+    for (const item of items) {
+      const score = scores.get(item.id)
+      if (score && score.isRelevant) {
+        relevant.push({ ...item, relevanceScore: score.score })
+        if (relevant.length >= maxCount) break
+      }
+    }
+
+    return relevant
+  }
+
+  async fetchAndGetRecentNewsForChat(
+    limit: number,
+    topics: string[]
+  ): Promise<RecentNewsItem[]> {
+    if (this.feeds.length === 0) {
+      logger.warn(
+        { event: 'news.fetch_no_feeds' },
+        'No feeds configured for on-demand fetch, returning cached news only'
+      )
+      return this.getRecentNewsForChat(limit, topics)
+    }
+
+    try {
+      logger.info(
+        { event: 'news.fetch_ondemand_start', feedCount: this.feeds.length },
+        `Fetching fresh news from ${this.feeds.length} feeds on user request`
+      )
+
+      const items = await this.feedReader.fetchAllFeeds(this.feeds)
+      let newItemsCount = 0
+
+      for (const item of items.slice(0, 20)) {
+        const wasStored = await this.newsStore.storeItem(item)
+        if (wasStored) {
+          newItemsCount++
+        }
+      }
+
+      logger.info(
+        {
+          event: 'news.fetch_ondemand_complete',
+          feedCount: this.feeds.length,
+          fetchedItems: items.length,
+          newItemsStored: newItemsCount,
+        },
+        `On-demand fetch complete: ${newItemsCount} new articles stored`
+      )
+
+      return this.getRecentNewsForChat(limit, topics)
+    } catch (error) {
+      logger.error(
+        {
+          event: 'news.fetch_ondemand_error',
+          error: error instanceof Error ? error.message : String(error),
+          err: error,
+        },
+        'Failed to fetch fresh news on demand, returning cached'
+      )
+      return this.getRecentNewsForChat(limit, topics)
+    }
   }
 
   private async getNewsItem(id: string): Promise<RecentNewsItem | null> {

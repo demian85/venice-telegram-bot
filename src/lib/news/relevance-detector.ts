@@ -35,13 +35,17 @@ export class RelevanceDetector {
   }
 
   async detectRelevance(
-    item: NewsItem
+    item: NewsItem,
+    topics?: string[]
   ): Promise<{ score: number; isRelevant: boolean }> {
+    const activeTopics = topics ?? this.topics
+
     logger.trace(
       {
         event: 'news.score.start',
         itemId: item.id,
         itemTitle: item.title.slice(0, 50),
+        topicCount: activeTopics.length,
       },
       'Starting relevance scoring'
     )
@@ -57,7 +61,7 @@ export class RelevanceDetector {
 
 Article: ${content}
 
-Topics of interest: ${this.topics.join(', ')}
+Topics of interest: ${activeTopics.join(', ')}
 
 Scoring guidelines:
 - 80-100: Highly relevant (directly covers most of the topics)
@@ -110,7 +114,8 @@ Scoring guidelines:
   }
 
   async batchDetectRelevance(
-    items: NewsItem[]
+    items: NewsItem[],
+    topics?: string[]
   ): Promise<Map<string, { score: number; isRelevant: boolean }>> {
     const results = new Map<string, { score: number; isRelevant: boolean }>()
 
@@ -118,12 +123,12 @@ Scoring guidelines:
       event: 'news.score.start',
       unscoredCount: items.length,
       threshold: this.relevanceThreshold,
-      topicCount: this.topics.length,
+      topicCount: (topics ?? this.topics).length,
     })
 
     await Promise.all(
       items.map(async (item) => {
-        const result = await this.detectRelevance(item)
+        const result = await this.detectRelevance(item, topics)
         results.set(item.id, result)
       })
     )

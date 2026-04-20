@@ -112,11 +112,13 @@ export class InMemoryRedis {
 
   async zrangebyscore(
     key: string,
-    min: number,
-    max: number
+    min: number | string,
+    max: number | string
   ): Promise<string[]> {
+    const minVal = min === '-inf' ? -Infinity : Number(min)
+    const maxVal = max === '+inf' ? Infinity : Number(max)
     return this.getSortedEntries(key)
-      .filter((entry) => entry.score >= min && entry.score <= max)
+      .filter((entry) => entry.score >= minVal && entry.score <= maxVal)
       .map((entry) => entry.member)
   }
 

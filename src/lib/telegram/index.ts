@@ -451,12 +451,20 @@ export class Bot {
 
         try {
           await ctx.sendChatAction('typing')
+          const chatId = this.getSubscriptionChatId(ctx)
+          const topics = await this.chatSubscriptionStore.getTopics(
+            chatId,
+            this.config.news.topics
+          )
           const articles =
-            await this.newsQueryService.fetchAndGetRecentNews(count)
+            await this.newsQueryService.fetchAndGetRecentNewsForChat(
+              count,
+              topics
+            )
 
           if (articles.length === 0) {
             await ctx.reply(
-              "I don't have any relevant news articles right now. News is collected periodically from configured sources. Try again in a few minutes!"
+              "I don't have any relevant news articles right now for your topics. News is collected periodically from configured sources. Try again in a few minutes!"
             )
             return
           }
@@ -624,11 +632,20 @@ export class Bot {
 
         try {
           await ctx.sendChatAction('typing')
-          const articles = await this.getRecentNewsLast24Hours(10)
+          const chatId = this.getSubscriptionChatId(ctx)
+          const topics = await this.chatSubscriptionStore.getTopics(
+            chatId,
+            this.config.news.topics
+          )
+          const articles =
+            await this.newsQueryService.getRecentNewsLast24HoursForChat(
+              10,
+              topics
+            )
 
           if (articles.length === 0) {
             await ctx.reply(
-              "I don't have any news articles from the last 24 hours. News is collected periodically from configured sources. Try again later!"
+              "I don't have any news articles from the last 24 hours matching your topics. News is collected periodically from configured sources. Try again later!"
             )
             return
           }
@@ -838,7 +855,7 @@ export class Bot {
     )
 
     return text
-      .replace(new RegExp(escapedBotUsername, 'g'), ' ')
+      .replace(new RegExp(`@${escapedBotUsername}`, 'g'), ' ')
       .replace(/\s+/g, ' ')
       .trim()
   }
