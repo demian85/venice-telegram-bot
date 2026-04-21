@@ -80,7 +80,7 @@
         "systemPrompt": "Summarize conversations accurately and briefly. Keep key facts, decisions, and action items."
       },
       "newsRelevance": {
-        "model": "qwen3-5-35b-a3b",
+        "model": "qwen3-5-9b",
         "supportsVision": true,
         "systemPrompt": "Judge whether a news item is relevant to the specified topics. Be concise and consistent."
       }
