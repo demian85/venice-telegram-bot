@@ -195,7 +195,27 @@ export class Bot {
           (whitelistedUsers.length > 0 &&
             !whitelistedUsers.includes(privateChat.username)))
       ) {
-        await ctx.reply('Forbidden: username is not whitelisted')
+        try {
+          await ctx.reply('Forbidden: username is not whitelisted')
+        } catch (error) {
+          const telegramError = error as {
+            response?: { error_code?: number; description?: string }
+          }
+          const errorCode = telegramError.response?.error_code
+          const errorDescription = telegramError.response?.description
+
+          if (errorCode === 403) {
+            logger.warn(
+              { chatId: privateChat.id, errorDescription },
+              'Blocked or inaccessible user tried to contact the bot'
+            )
+          } else {
+            logger.error(
+              { error, chatId: privateChat.id },
+              'Failed to send whitelist rejection message'
+            )
+          }
+        }
         return
       }
 
@@ -337,7 +357,8 @@ export class Bot {
         (errorDescription?.includes('group chat was deleted') ||
           errorDescription?.includes('the group chat was deleted') ||
           errorDescription?.includes('bot was kicked') ||
-          errorDescription?.includes('bot is not a member'))
+          errorDescription?.includes('bot is not a member') ||
+          errorDescription?.includes('bot was blocked by the user'))
 
       if (isChatDeleted) {
         logger.warn(
